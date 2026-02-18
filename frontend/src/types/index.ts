@@ -18,6 +18,7 @@ export interface Agency {
   id: number;
   agency_id: string;
   name: string;
+  is_active?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -25,6 +26,7 @@ export interface Agency {
 export interface BranchUnitDepartment {
   id: number;
   name: string;
+  is_active?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -32,6 +34,7 @@ export interface BranchUnitDepartment {
 export interface Position {
   id: number;
   name: string;
+  is_active?: boolean;
   created_at: string;
   updated_at: string;
 }

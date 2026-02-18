@@ -1,4 +1,4 @@
-import { Table, Tag, Typography, Empty, Input, Select, Button, Space, Drawer, message, Radio, Descriptions } from 'antd';
+import { Table, Tag, Typography, Empty, Input, Select, Button, Space, Modal, Drawer, message, Radio, Descriptions } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
@@ -21,6 +21,7 @@ const AuditTrailPage = () => {
     const [detailOpen, setDetailOpen] = useState(false);
     const [detailRecord, setDetailRecord] = useState<any>(null);
     const [actionFilter, setActionFilter] = useState<string>('all');
+    const [userTypeFilter, setUserTypeFilter] = useState<string>('all');
     const [searchTerm, setSearchTerm] = useState('');
     const [isExportOpen, setIsExportOpen] = useState(false);
     const [exportType, setExportType] = useState<ExportType>('csv');
@@ -38,6 +39,17 @@ const AuditTrailPage = () => {
             )
         ).sort();
         return ['all', ...uniqueActions];
+    }, [logRows]);
+
+    const userTypeOptions = useMemo(() => {
+        const uniqueTypes = Array.from(
+            new Set(
+                logRows
+                    .map((row: any) => String(row.actor?.user_type || row.actor_user_type || '').trim())
+                    .filter((value: string) => value.length > 0)
+            )
+        ).sort();
+        return ['all', ...uniqueTypes];
     }, [logRows]);
 
     useEffect(() => {
@@ -64,6 +76,9 @@ const AuditTrailPage = () => {
             if (actionFilter !== 'all' && String(row.action || '') !== actionFilter) {
                 return false;
             }
+            if (userTypeFilter !== 'all' && String(row.actor?.user_type || row.actor_user_type || '') !== userTypeFilter) {
+                return false;
+            }
             if (!term) {
                 return true;
             }
@@ -80,11 +95,11 @@ const AuditTrailPage = () => {
                 entity.includes(term)
             );
         });
-    }, [actionFilter, logRows, searchTerm]);
+    }, [actionFilter, logRows, searchTerm, userTypeFilter]);
 
     useEffect(() => {
         setPage(1);
-    }, [actionFilter, searchTerm, logRows.length]);
+    }, [actionFilter, searchTerm, logRows.length, userTypeFilter]);
 
     const pagedLogs = useMemo(() => {
         const start = (page - 1) * pageSize;
@@ -323,6 +338,15 @@ const AuditTrailPage = () => {
                                     label: action === 'all' ? 'All actions' : action,
                                 }))}
                             />
+                            <Select
+                                value={userTypeFilter}
+                                onChange={setUserTypeFilter}
+                                className="audit-filter"
+                                options={userTypeOptions.map((userType) => ({
+                                    value: userType,
+                                    label: userType === 'all' ? 'All user types' : userType,
+                                }))}
+                            />
                             <Button
                                 icon={<ReloadOutlined />}
                                 loading={isFetching}
@@ -340,12 +364,16 @@ const AuditTrailPage = () => {
                     </div>
                 )}
             />
-            <Drawer
+            <Modal
                 title="Export audit logs"
                 open={isExportOpen}
-                onClose={() => setIsExportOpen(false)}
-                width={420}
-                destroyOnClose
+                onCancel={() => setIsExportOpen(false)}
+                onOk={() => {
+                    handleExport();
+                    setIsExportOpen(false);
+                }}
+                okText="Export"
+                destroyOnHidden
             >
                 <Space direction="vertical" className="audit-export">
                     <Radio.Group
@@ -357,24 +385,13 @@ const AuditTrailPage = () => {
                             { label: 'PDF', value: 'pdf' },
                         ]}
                     />
-                    <div className="audit-drawer-footer">
-                        <Button
-                            type="primary"
-                            onClick={() => {
-                                handleExport();
-                                setIsExportOpen(false);
-                            }}
-                        >
-                            Export
-                        </Button>
-                    </div>
                 </Space>
-            </Drawer>
+            </Modal>
             <Drawer
                 title="Audit Details"
                 open={detailOpen}
                 onClose={() => setDetailOpen(false)}
-                width={720}
+                size="large"
                 destroyOnClose
             >
                 <Space direction="vertical" className="audit-detail">

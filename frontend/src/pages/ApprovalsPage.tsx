@@ -1,7 +1,7 @@
-import { Table, Button, Space, message, Typography, Empty, Drawer, Form, Input } from 'antd';
-import { CheckOutlined, CloseOutlined, EyeOutlined } from '@ant-design/icons';
+import { Table, Button, Space, message, Typography, Empty, Modal, Form, Input, Spin, Drawer, Descriptions, Tag, Tooltip, Tabs } from 'antd';
+import { CheckOutlined, CloseOutlined, EyeOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { uploadService } from '../services/apiService';
+import { requirementService, uploadService } from '../services/apiService';
 import type { ColumnsType } from 'antd/es/table';
 import { useState } from 'react';
 import './ApprovalsPage.css';
@@ -11,13 +11,20 @@ const { Title } = Typography;
 const ApprovalsPage = () => {
     const queryClient = useQueryClient();
     const [form] = Form.useForm<{ remarks?: string }>();
-    const [drawerOpen, setDrawerOpen] = useState(false);
+    const [modalOpen, setModalOpen] = useState(false);
+    const [detailOpen, setDetailOpen] = useState(false);
     const [actionType, setActionType] = useState<'approve' | 'reject'>('approve');
     const [activeId, setActiveId] = useState<number | null>(null);
     const [activeRequirementName, setActiveRequirementName] = useState<string>('');
+    const [detailRequirementId, setDetailRequirementId] = useState<number | null>(null);
     const { data: uploads, isLoading } = useQuery({
         queryKey: ['uploads'],
         queryFn: uploadService.getAll,
+    });
+    const { data: requirementDetail, isLoading: detailLoading } = useQuery({
+        queryKey: ['requirement-detail', detailRequirementId],
+        queryFn: () => requirementService.show(detailRequirementId as number),
+        enabled: Boolean(detailRequirementId),
     });
 
     const approveMutation = useMutation({
@@ -25,6 +32,8 @@ const ApprovalsPage = () => {
         onSuccess: () => {
             message.success(activeRequirementName ? `Approved: ${activeRequirementName}` : 'Approved successfully');
             queryClient.invalidateQueries({ queryKey: ['uploads'] });
+            setModalOpen(false);
+            setActiveId(null);
         },
         onError: (error: any) => {
             message.error(error.response?.data?.message || 'Failed to approve.');
@@ -36,13 +45,22 @@ const ApprovalsPage = () => {
         onSuccess: () => {
             message.success(activeRequirementName ? `Rejected: ${activeRequirementName}` : 'Rejected successfully');
             queryClient.invalidateQueries({ queryKey: ['uploads'] });
+            setModalOpen(false);
+            setActiveId(null);
         },
         onError: (error: any) => {
             message.error(error.response?.data?.message || 'Failed to reject.');
         },
     });
 
-    const pendingUploads = uploads?.filter((upload) => upload.approval_status === 'PENDING');
+    const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('pending');
+
+    const filteredUploads = (uploads || []).filter((upload: any) => {
+        if (statusFilter === 'all') {
+            return true;
+        }
+        return String(upload.approval_status || '').toUpperCase() === statusFilter.toUpperCase();
+    });
 
     const handleViewFile = async (uploadId: number) => {
         try {
@@ -53,12 +71,21 @@ const ApprovalsPage = () => {
         }
     };
 
+    const openDetails = (requirementId?: number | null) => {
+        if (!requirementId) {
+            message.warning('Requirement details not available.');
+            return;
+        }
+        setDetailRequirementId(requirementId);
+        setDetailOpen(true);
+    };
+
     const openRemarks = (type: 'approve' | 'reject', id: number, requirementName?: string) => {
         setActionType(type);
         setActiveId(id);
         setActiveRequirementName(requirementName || '');
         form.resetFields();
-        setDrawerOpen(true);
+        setModalOpen(true);
     };
 
     const handleSubmit = (values: { remarks?: string }) => {
@@ -70,8 +97,9 @@ const ApprovalsPage = () => {
         } else {
             rejectMutation.mutate({ id: activeId, remarks: values.remarks || '' });
         }
-        setDrawerOpen(false);
     };
+
+    const isProcessing = approveMutation.isPending || rejectMutation.isPending;
 
     const columns: ColumnsType<any> = [
         {
@@ -101,26 +129,70 @@ const ApprovalsPage = () => {
             render: (date) => date ? new Date(date).toLocaleString() : 'N/A',
         },
         {
+            title: 'Status',
+            dataIndex: 'approval_status',
+            key: 'status',
+            render: (status) => (
+                <Tag color={
+                    status === 'APPROVED'
+                        ? 'green'
+                        : status === 'REJECTED'
+                            ? 'red'
+                            : 'gold'
+                }>
+                    {status || 'N/A'}
+                </Tag>
+            ),
+        },
+        {
+            title: 'Status Date',
+            dataIndex: 'status_change_on',
+            key: 'status_change_on',
+            render: (date, record) => {
+                if (!record?.approval_status || record.approval_status === 'PENDING') {
+                    return 'N/A';
+                }
+                return date ? new Date(date).toLocaleString() : 'N/A';
+            },
+        },
+        {
             title: 'Actions',
             key: 'actions',
             align: 'right',
             render: (_, record) => (
                 <Space>
-                    <Button type="link" icon={<EyeOutlined />} onClick={() => handleViewFile(record.id)}>
-                        View File
-                    </Button>
-                    <Button
-                        type="text"
-                        icon={<CheckOutlined />}
-                        className="approvals-action approvals-action--approve"
-                        onClick={() => openRemarks('approve', record.id, record.requirement?.requirement)}
-                    />
-                    <Button
-                        type="text"
-                        danger
-                        icon={<CloseOutlined />}
-                        onClick={() => openRemarks('reject', record.id, record.requirement?.requirement)}
-                    />
+                    <Tooltip title="View file">
+                        <Button type="link" icon={<EyeOutlined />} onClick={() => handleViewFile(record.id)}>
+                            View File
+                        </Button>
+                    </Tooltip>
+                    <Tooltip title="View requirement details">
+                        <Button
+                            type="text"
+                            icon={<InfoCircleOutlined />}
+                            onClick={() => openDetails(record.requirement?.id)}
+                        />
+                    </Tooltip>
+                    <Tooltip title="Approve">
+                        <Button
+                            type="text"
+                            icon={<CheckOutlined />}
+                            className="approvals-action approvals-action--approve"
+                            onClick={() => openRemarks('approve', record.id, record.requirement?.requirement)}
+                            loading={isProcessing && activeId === record.id && actionType === 'approve'}
+                            disabled={isProcessing || record.approval_status !== 'PENDING'}
+                        />
+                    </Tooltip>
+                    <Tooltip title="Reject">
+                        <Button
+                            type="text"
+                            danger
+                            icon={<CloseOutlined />}
+                            onClick={() => openRemarks('reject', record.id, record.requirement?.requirement)}
+                            loading={isProcessing && activeId === record.id && actionType === 'reject'}
+                            disabled={isProcessing || record.approval_status !== 'PENDING'}
+                        />
+                    </Tooltip>
                 </Space>
             ),
         },
@@ -128,30 +200,44 @@ const ApprovalsPage = () => {
 
     return (
         <div className="approvals-page">
-            <Title level={2} className="approvals-title">Pending Approvals</Title>
+            <Title level={2} className="approvals-title">Approvals</Title>
+            <Tabs
+                activeKey={statusFilter}
+                onChange={(key) => setStatusFilter(key as typeof statusFilter)}
+                items={[
+                    { key: 'pending', label: 'Pending' },
+                    { key: 'approved', label: 'Approved' },
+                    { key: 'rejected', label: 'Rejected' },
+                    { key: 'all', label: 'All' },
+                ]}
+            />
             <Table
                 columns={columns}
-                dataSource={pendingUploads}
+                dataSource={filteredUploads}
                 rowKey="id"
                 loading={isLoading}
                 locale={{ emptyText: <Empty description="No pending approvals" /> }}
             />
-            <Drawer
-                title={actionType === 'approve' ? 'Approve submission' : 'Reject submission'}
-                open={drawerOpen}
-                onClose={() => setDrawerOpen(false)}
-                width={520}
+            <Modal
+                title={(
+                    <Space>
+                        {actionType === 'approve' ? 'Approve submission' : 'Reject submission'}
+                        {isProcessing ? <Spin size="small" /> : null}
+                    </Space>
+                )}
+                open={modalOpen}
+                onCancel={() => setModalOpen(false)}
                 destroyOnClose
-                className="approvals-drawer"
+                className="approvals-modal"
                 footer={(
-                    <div className="approvals-drawer-footer">
+                    <div className="approvals-modal-footer">
                         <Space>
-                            <Button onClick={() => setDrawerOpen(false)}>Cancel</Button>
+                            <Button onClick={() => setModalOpen(false)} disabled={isProcessing}>Cancel</Button>
                             <Button
                                 type="primary"
                                 danger={actionType === 'reject'}
                                 onClick={() => form.submit()}
-                                loading={approveMutation.isPending || rejectMutation.isPending}
+                                loading={isProcessing}
                             >
                                 {actionType === 'approve' ? 'Approve' : 'Reject'}
                             </Button>
@@ -168,6 +254,91 @@ const ApprovalsPage = () => {
                         <Input.TextArea rows={4} placeholder="Add remarks (optional for approvals)" />
                     </Form.Item>
                 </Form>
+            </Modal>
+            <Drawer
+                title="Requirement Details"
+                open={detailOpen}
+                onClose={() => setDetailOpen(false)}
+                width={760}
+                destroyOnClose
+                className="approvals-detail-drawer"
+            >
+                {detailLoading ? (
+                    <Spin />
+                ) : (
+                    <>
+                        <Descriptions column={2} bordered size="small">
+                            <Descriptions.Item label="Requirement ID">
+                                {requirementDetail?.req_id || 'N/A'}
+                            </Descriptions.Item>
+                            <Descriptions.Item label="Agency">
+                                {requirementDetail?.agency?.name || 'N/A'}
+                            </Descriptions.Item>
+                            <Descriptions.Item label="Category">
+                                {requirementDetail?.category || 'N/A'}
+                            </Descriptions.Item>
+                            <Descriptions.Item label="Requirement Name" span={2}>
+                                {requirementDetail?.requirement || 'N/A'}
+                            </Descriptions.Item>
+                            <Descriptions.Item label="Description" span={2}>
+                                {requirementDetail?.description || 'N/A'}
+                            </Descriptions.Item>
+                            <Descriptions.Item label="Frequency">
+                                {requirementDetail?.frequency || 'N/A'}
+                            </Descriptions.Item>
+                            <Descriptions.Item label="Schedule">
+                                {requirementDetail?.schedule || 'N/A'}
+                            </Descriptions.Item>
+                            <Descriptions.Item label="Deadline">
+                                {requirementDetail?.deadline || 'N/A'}
+                            </Descriptions.Item>
+                            <Descriptions.Item label="Overall Compliance Status">
+                                {requirementDetail?.compliance_status || 'N/A'}
+                            </Descriptions.Item>
+                        </Descriptions>
+                        <div className="approvals-detail-section">
+                            <Typography.Title level={5}>Past Uploads</Typography.Title>
+                            {requirementDetail?.uploads && requirementDetail.uploads.length > 0 ? (
+                                <Space direction="vertical" size={12} className="approvals-upload-list">
+                                    {requirementDetail.uploads.map((upload: any) => (
+                                        <div key={upload.id} className="approvals-upload-item">
+                                            <div className="approvals-upload-row">
+                                                <div>
+                                                    <div className="approvals-upload-title">{upload.upload_id}</div>
+                                                    <div className="approvals-upload-subtitle">
+                                                        {upload.uploader?.employee_name || upload.uploader_email || 'Unknown'} ·{' '}
+                                                        {upload.upload_date ? new Date(upload.upload_date).toLocaleString() : 'N/A'}
+                                                    </div>
+                                                </div>
+                                                <Tag color={
+                                                    upload.approval_status === 'APPROVED'
+                                                        ? 'green'
+                                                        : upload.approval_status === 'REJECTED'
+                                                            ? 'red'
+                                                            : 'gold'
+                                                }>
+                                                    {upload.approval_status}
+                                                </Tag>
+                                            </div>
+                                            <Space>
+                                                <Button size="small" onClick={() => handleViewFile(upload.id)}>
+                                                    View file
+                                                </Button>
+                                                {upload.admin_remarks ? (
+                                                    <span className="approvals-upload-remarks">
+                                                        Remarks: {upload.admin_remarks}
+                                                    </span>
+                                                ) : null}
+                                            </Space>
+                                        </div>
+                                    ))}
+                                </Space>
+                            ) : (
+                                <Empty description="No uploads found" />
+                            )}
+                        </div>
+                    </>
+                )}
             </Drawer>
         </div>
     );

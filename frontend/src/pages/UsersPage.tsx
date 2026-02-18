@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react';
-import { Button, Form, Input, Drawer, Select, Space, Switch, Table, Tag, Typography, message, Alert, Tooltip } from 'antd';
+import { useEffect, useMemo, useState } from 'react';
+import { Button, Form, Input, Modal, Select, Space, Switch, Table, Tag, Typography, message, Alert, Tooltip, Upload } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { CheckCircleOutlined, EditOutlined, KeyOutlined, ReloadOutlined, StopOutlined } from '@ant-design/icons';
+import { CheckCircleOutlined, EditOutlined, KeyOutlined, ReloadOutlined, StopOutlined, UploadOutlined, DownloadOutlined } from '@ant-design/icons';
 import { userService } from '../services/apiService';
+import { authService } from '../services/authService';
 import type { User } from '../types';
 import './UsersPage.css';
 
@@ -52,6 +53,12 @@ const UsersPage = () => {
     const [passwordUser, setPasswordUser] = useState<User | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [roleFilter, setRoleFilter] = useState('all');
+    const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+    const [isSpecialist, setIsSpecialist] = useState(false);
+    const [isImportOpen, setIsImportOpen] = useState(false);
+    const [importFile, setImportFile] = useState<File | null>(null);
+    const [templateFormat, setTemplateFormat] = useState<'csv' | 'xlsx'>('csv');
+    const [isTemplateOpen, setIsTemplateOpen] = useState(false);
 
     const { data, isLoading, isFetching, error, refetch } = useQuery({
         queryKey: ['users'],
@@ -59,6 +66,51 @@ const UsersPage = () => {
     });
 
     const users: User[] = data?.data || [];
+
+    useEffect(() => {
+        let isActive = true;
+        authService
+            .me()
+            .then((data) => {
+                if (!isActive) {
+                    return;
+                }
+                const roles = data?.user?.roles || [];
+                setIsSuperAdmin(roles.some((role: any) => role.name === 'Super Admin'));
+                setIsSpecialist(
+                    roles.some((role: any) =>
+                        role.name === 'Compliance & Admin Specialist' || role.name === 'Admin Specialist'
+                    )
+                );
+            })
+            .catch(() => {});
+
+        return () => {
+            isActive = false;
+        };
+    }, []);
+
+    const canManageUsers = isSuperAdmin || isSpecialist;
+    const canManageUserType = (userType?: string | null) => {
+        if (isSuperAdmin) {
+            return true;
+        }
+        if (!isSpecialist) {
+            return false;
+        }
+        return userType === 'Admin Specialist' || userType === 'Person-in-Charge';
+    };
+    const isSuperAdminUser = (user: User) =>
+        user.user_type === 'Super Admin' || user.roles?.some((role) => role.name === 'Super Admin');
+    const isPicUser = (user: User) =>
+        user.user_type === 'Person-in-Charge' || user.roles?.some((role) => role.name === 'Person-In-Charge (PIC)');
+    const canManageTarget = (user: User) => {
+        if (isSuperAdmin) {
+            return true;
+        }
+        return canManageUserType(user.user_type) && !isSuperAdminUser(user);
+    };
+    const canResetPasswordFor = (user: User) => isSuperAdmin || (isSpecialist && isPicUser(user));
 
     const previewIdByType = useMemo<Record<string, string>>(() => {
         const prefixMap: Record<string, string> = {
@@ -144,14 +196,83 @@ const UsersPage = () => {
         },
     });
 
+    const importUsers = useMutation({
+        mutationFn: userService.import,
+        onSuccess: (response) => {
+            const created = response?.created ?? 0;
+            const errors = response?.errors ?? [];
+            if (errors.length) {
+                message.warning(`Imported ${created} rows, ${errors.length} failed.`);
+            } else {
+                message.success(`Imported ${created} rows.`);
+            }
+            setIsImportOpen(false);
+            setImportFile(null);
+            refetch();
+        },
+        onError: (error: any) => {
+            message.error(error.response?.data?.message || 'Failed to import users.');
+        },
+    });
+
     const handleAdd = () => {
+        if (!canManageUsers) {
+            message.error('You do not have permission to add users.');
+            return;
+        }
         setEditingUser(null);
         form.resetFields();
         form.setFieldsValue({ is_active: true, user_id: 'Select user type' });
         setIsDrawerOpen(true);
     };
 
+    const handleDownloadTemplate = () => {
+        const headers = ['employee_name', 'email_address', 'user_type', 'branch', 'password'];
+        if (templateFormat === 'xlsx') {
+            const xmlRow = (values: string[]) => `
+                <Row>
+                    ${values.map((value) => `<Cell><Data ss:Type="String">${value}</Data></Cell>`).join('')}
+                </Row>
+            `;
+            const xml = `<?xml version="1.0"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:html="http://www.w3.org/TR/REC-html40">
+ <Worksheet ss:Name="Users">
+  <Table>${xmlRow(headers)}</Table>
+ </Worksheet>
+</Workbook>`;
+            const blob = new Blob([xml], { type: 'application/vnd.ms-excel' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', 'user_import_template.xlsx');
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
+            return;
+        }
+
+        const csv = `${headers.join(',')}\n`;
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', 'user_import_template.csv');
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+    };
+
     const handleEdit = (user: User) => {
+        if (!canManageTarget(user)) {
+            message.error('You do not have permission to edit this user.');
+            return;
+        }
         setEditingUser(user);
         form.setFieldsValue({
             user_id: user.user_id,
@@ -165,12 +286,20 @@ const UsersPage = () => {
     };
 
     const handleResetPassword = (user: User) => {
+        if (!canResetPasswordFor(user)) {
+            message.error('You do not have permission to reset passwords.');
+            return;
+        }
         setPasswordUser(user);
         passwordForm.resetFields();
         setIsPasswordOpen(true);
     };
 
     const handleSubmit = (values: UserFormValues) => {
+        if (!canManageUsers || !canManageUserType(values.user_type)) {
+            message.error('You do not have permission to manage this user type.');
+            return;
+        }
         if (editingUser) {
             updateUser.mutate({ id: editingUser.id, payload: values });
             return;
@@ -186,6 +315,10 @@ const UsersPage = () => {
     };
 
     const handleToggleActive = (user: User, isActive: boolean) => {
+        if (!canManageTarget(user)) {
+            message.error('You do not have permission to update this user.');
+            return;
+        }
         updateUser.mutate({
             id: user.id,
             payload: {
@@ -237,6 +370,7 @@ const UsersPage = () => {
                             className="users-action users-action--info"
                             aria-label="Edit user"
                             onClick={() => handleEdit(record)}
+                            disabled={!canManageTarget(record)}
                         />
                     </Tooltip>
                     <Tooltip title="Reset password">
@@ -245,6 +379,7 @@ const UsersPage = () => {
                             className="users-action users-action--warning"
                             aria-label="Reset password"
                             onClick={() => handleResetPassword(record)}
+                            disabled={!canResetPasswordFor(record)}
                         />
                     </Tooltip>
                     <Tooltip title={record.is_active ?? true ? 'Deactivate' : 'Activate'}>
@@ -256,12 +391,13 @@ const UsersPage = () => {
                             }
                             aria-label={record.is_active ?? true ? 'Deactivate user' : 'Activate user'}
                             onClick={() => handleToggleActive(record, !(record.is_active ?? true))}
+                            disabled={!canManageTarget(record)}
                         />
                     </Tooltip>
                 </Space>
             ),
         },
-    ]), [updateUser]);
+    ]), [canManageTarget, handleEdit, handleResetPassword, handleToggleActive, isSuperAdmin, updateUser]);
 
     return (
         <div className="users-page">
@@ -311,7 +447,15 @@ const UsersPage = () => {
                     </Tooltip>
                 </Space>
                 <div className="users-toolbar-right">
-                    <Button type="primary" onClick={handleAdd}>Add User</Button>
+                    <Space>
+                        <Button icon={<DownloadOutlined />} onClick={() => setIsTemplateOpen(true)}>
+                            Template
+                        </Button>
+                        <Button icon={<UploadOutlined />} onClick={() => setIsImportOpen(true)} disabled={!canManageUsers}>
+                            Import
+                        </Button>
+                        <Button type="primary" onClick={handleAdd} disabled={!canManageUsers}>Add User</Button>
+                    </Space>
                 </div>
             </div>
 
@@ -322,12 +466,14 @@ const UsersPage = () => {
                 loading={isLoading}
             />
 
-            <Drawer
+            <Modal
                 title={editingUser ? 'Edit User' : 'Add User'}
                 open={isDrawerOpen}
-                onClose={() => setIsDrawerOpen(false)}
-                destroyOnClose
-                width={720}
+                onCancel={() => setIsDrawerOpen(false)}
+                destroyOnHidden
+                onOk={() => form.submit()}
+                okText={editingUser ? 'Save Changes' : 'Create User'}
+                confirmLoading={createUser.isPending || updateUser.isPending}
             >
                 <Form form={form} layout="vertical" onFinish={handleSubmit}>
                     <Form.Item label="User ID" name="user_id">
@@ -358,7 +504,7 @@ const UsersPage = () => {
                             className="users-field"
                         >
                             <Select
-                                options={userTypeOptions}
+                                options={userTypeOptions.filter((option) => canManageUserType(option.value))}
                                 onChange={(value: string) => {
                                     if (!editingUser) {
                                     form.setFieldsValue({ user_id: previewIdByType[value] || 'Auto-generated' });
@@ -400,25 +546,16 @@ const UsersPage = () => {
                         </Form.Item>
                     )}
                 </Form>
-                <div className="users-drawer-footer">
-                    <Space>
-                        <Button onClick={() => setIsDrawerOpen(false)}>Cancel</Button>
-                        <Button
-                            type="primary"
-                            onClick={() => form.submit()}
-                            loading={createUser.isPending || updateUser.isPending}
-                        >
-                            {editingUser ? 'Save Changes' : 'Create User'}
-                        </Button>
-                    </Space>
-                </div>
-            </Drawer>
+            </Modal>
 
-            <Drawer
+            <Modal
                 title={`Reset Password${passwordUser ? `: ${passwordUser.employee_name}` : ''}`}
                 open={isPasswordOpen}
-                onClose={() => setIsPasswordOpen(false)}
-                destroyOnClose
+                onCancel={() => setIsPasswordOpen(false)}
+                destroyOnHidden
+                onOk={() => passwordForm.submit()}
+                okText="Reset Password"
+                confirmLoading={resetPassword.isPending}
             >
                 <Form form={passwordForm} layout="vertical" onFinish={(values) => {
                     if (!passwordUser) {
@@ -455,19 +592,74 @@ const UsersPage = () => {
                         <Input.Password />
                     </Form.Item>
                 </Form>
-                <div className="users-drawer-footer">
-                    <Space>
-                        <Button onClick={() => setIsPasswordOpen(false)}>Cancel</Button>
-                        <Button
-                            type="primary"
-                            onClick={() => passwordForm.submit()}
-                            loading={resetPassword.isPending}
-                        >
-                            Reset Password
-                        </Button>
-                    </Space>
-                </div>
-            </Drawer>
+            </Modal>
+
+            <Modal
+                title="Import Users"
+                open={isImportOpen}
+                onCancel={() => {
+                    setIsImportOpen(false);
+                    setImportFile(null);
+                }}
+                onOk={() => {
+                    if (!importFile) {
+                        message.error('Please select a file to import.');
+                        return;
+                    }
+                    importUsers.mutate(importFile);
+                }}
+                okText="Import"
+                confirmLoading={importUsers.isPending}
+                destroyOnHidden
+            >
+                <Space direction="vertical" className="users-import">
+                    <Typography.Text type="secondary">
+                        Upload a CSV or XLSX file using the provided template. New users will be active by default.
+                    </Typography.Text>
+                    <Upload
+                        accept=".csv,.xlsx"
+                        showUploadList={false}
+                        beforeUpload={(file) => {
+                            setImportFile(file);
+                            return false;
+                        }}
+                    >
+                        <Button icon={<UploadOutlined />}>Select File</Button>
+                    </Upload>
+                    {importFile && (
+                        <Typography.Text>
+                            Selected: {importFile.name}
+                        </Typography.Text>
+                    )}
+                </Space>
+            </Modal>
+
+            <Modal
+                title="Download Template"
+                open={isTemplateOpen}
+                onCancel={() => setIsTemplateOpen(false)}
+                onOk={() => {
+                    handleDownloadTemplate();
+                    setIsTemplateOpen(false);
+                }}
+                okText="Download"
+                destroyOnHidden
+            >
+                <Space direction="vertical" className="users-import">
+                    <Typography.Text type="secondary">
+                        Choose a template format to download.
+                    </Typography.Text>
+                    <Select
+                        value={templateFormat}
+                        onChange={(value) => setTemplateFormat(value)}
+                        options={[
+                            { label: 'CSV', value: 'csv' },
+                            { label: 'XLSX', value: 'xlsx' },
+                        ]}
+                        style={{ width: 160 }}
+                    />
+                </Space>
+            </Modal>
         </div>
     );
 };

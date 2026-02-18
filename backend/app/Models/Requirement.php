@@ -32,4 +32,9 @@ class Requirement extends Model
     {
         return $this->hasMany(RequirementAssignment::class);
     }
+
+    public function uploads()
+    {
+        return $this->hasMany(Upload::class, 'requirement_id');
+    }
 }

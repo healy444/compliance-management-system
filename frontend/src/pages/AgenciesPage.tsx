@@ -1,5 +1,5 @@
-import { Table, Button, Space, Form, Input, message, Typography, Modal, Tabs } from 'antd';
-import { PlusOutlined, EditOutlined, DeleteOutlined, ReloadOutlined } from '@ant-design/icons';
+import { Table, Button, Space, Form, Input, message, Typography, Modal, Tabs, Tag, Tooltip } from 'antd';
+import { PlusOutlined, EditOutlined, ReloadOutlined, PoweroffOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
@@ -61,14 +61,15 @@ const ReferenceDataPage = () => {
         },
     });
 
-    const deleteAgency = useMutation({
-        mutationFn: (id: number) => agencyService.delete(id),
+    const toggleAgencyActive = useMutation({
+        mutationFn: ({ id, is_active }: { id: number; is_active: boolean }) =>
+            agencyService.update(id, { is_active }),
         onSuccess: () => {
-            message.success('Agency deleted.');
+            message.success('Agency status updated.');
             refetchAgencies();
         },
         onError: (error: any) => {
-            message.error(error.response?.data?.message || 'Failed to delete agency.');
+            message.error(error.response?.data?.message || 'Failed to update agency status.');
         },
     });
 
@@ -97,14 +98,15 @@ const ReferenceDataPage = () => {
         },
     });
 
-    const deleteUnit = useMutation({
-        mutationFn: (id: number) => branchUnitDepartmentService.delete(id),
+    const toggleUnitActive = useMutation({
+        mutationFn: ({ id, is_active }: { id: number; is_active: boolean }) =>
+            branchUnitDepartmentService.update(id, { is_active }),
         onSuccess: () => {
-            message.success('Branch/unit/department deleted.');
+            message.success('Branch/unit/department status updated.');
             refetchUnits();
         },
         onError: (error: any) => {
-            message.error(error.response?.data?.message || 'Failed to delete branch/unit/department.');
+            message.error(error.response?.data?.message || 'Failed to update branch/unit/department status.');
         },
     });
 
@@ -133,14 +135,15 @@ const ReferenceDataPage = () => {
         },
     });
 
-    const deletePosition = useMutation({
-        mutationFn: (id: number) => positionService.delete(id),
+    const togglePositionActive = useMutation({
+        mutationFn: ({ id, is_active }: { id: number; is_active: boolean }) =>
+            positionService.update(id, { is_active }),
         onSuccess: () => {
-            message.success('Position deleted.');
+            message.success('Position status updated.');
             refetchPositions();
         },
         onError: (error: any) => {
-            message.error(error.response?.data?.message || 'Failed to delete position.');
+            message.error(error.response?.data?.message || 'Failed to update position status.');
         },
     });
 
@@ -167,13 +170,16 @@ const ReferenceDataPage = () => {
         createAgency.mutate(values);
     };
 
-    const handleAgencyDelete = (agency: Agency) => {
+    const handleAgencyToggle = (agency: Agency) => {
+        const nextActive = !agency.is_active;
         Modal.confirm({
-            title: `Delete ${agency.name}?`,
-            content: 'This action cannot be undone.',
-            okText: 'Delete',
-            okType: 'danger',
-            onOk: () => deleteAgency.mutate(agency.id),
+            title: `${nextActive ? 'Activate' : 'Deactivate'} ${agency.name}?`,
+            content: nextActive
+                ? 'This agency will be available in requirement forms.'
+                : 'This agency will be hidden from requirement forms.',
+            okText: nextActive ? 'Activate' : 'Deactivate',
+            okType: nextActive ? 'primary' : 'danger',
+            onOk: () => toggleAgencyActive.mutate({ id: agency.id, is_active: nextActive }),
         });
     };
 
@@ -197,13 +203,16 @@ const ReferenceDataPage = () => {
         createUnit.mutate(values);
     };
 
-    const handleUnitDelete = (unit: BranchUnitDepartment) => {
+    const handleUnitToggle = (unit: BranchUnitDepartment) => {
+        const nextActive = !unit.is_active;
         Modal.confirm({
-            title: `Delete ${unit.name}?`,
-            content: 'This action cannot be undone.',
-            okText: 'Delete',
-            okType: 'danger',
-            onOk: () => deleteUnit.mutate(unit.id),
+            title: `${nextActive ? 'Activate' : 'Deactivate'} ${unit.name}?`,
+            content: nextActive
+                ? 'This item will be available in requirement forms.'
+                : 'This item will be hidden from requirement forms.',
+            okText: nextActive ? 'Activate' : 'Deactivate',
+            okType: nextActive ? 'primary' : 'danger',
+            onOk: () => toggleUnitActive.mutate({ id: unit.id, is_active: nextActive }),
         });
     };
 
@@ -227,19 +236,31 @@ const ReferenceDataPage = () => {
         createPosition.mutate(values);
     };
 
-    const handlePositionDelete = (position: Position) => {
+    const handlePositionToggle = (position: Position) => {
+        const nextActive = !position.is_active;
         Modal.confirm({
-            title: `Delete ${position.name}?`,
-            content: 'This action cannot be undone.',
-            okText: 'Delete',
-            okType: 'danger',
-            onOk: () => deletePosition.mutate(position.id),
+            title: `${nextActive ? 'Activate' : 'Deactivate'} ${position.name}?`,
+            content: nextActive
+                ? 'This position will be available in requirement forms.'
+                : 'This position will be hidden from requirement forms.',
+            okText: nextActive ? 'Activate' : 'Deactivate',
+            okType: nextActive ? 'primary' : 'danger',
+            onOk: () => togglePositionActive.mutate({ id: position.id, is_active: nextActive }),
         });
     };
 
     const agencyColumns: ColumnsType<Agency> = [
         { title: 'Agency ID', dataIndex: 'agency_id', key: 'agency_id' },
         { title: 'Name', dataIndex: 'name', key: 'name' },
+        {
+            title: 'Status',
+            key: 'status',
+            render: (_, record) => (
+                <Tag color={record.is_active === false ? 'default' : 'green'}>
+                    {record.is_active === false ? 'Inactive' : 'Active'}
+                </Tag>
+            ),
+        },
         {
             title: 'Created At',
             dataIndex: 'created_at',
@@ -254,9 +275,16 @@ const ReferenceDataPage = () => {
                     <Button type="link" icon={<EditOutlined />} onClick={() => handleAgencyEdit(record)}>
                         Edit
                     </Button>
-                    <Button type="link" danger icon={<DeleteOutlined />} onClick={() => handleAgencyDelete(record)}>
-                        Delete
-                    </Button>
+                    <Tooltip title={record.is_active === false ? 'Activate' : 'Deactivate'}>
+                        <Button
+                            type="link"
+                            icon={record.is_active === false ? <CheckCircleOutlined /> : <PoweroffOutlined />}
+                            danger={record.is_active !== false}
+                            onClick={() => handleAgencyToggle(record)}
+                        >
+                            {record.is_active === false ? 'Activate' : 'Deactivate'}
+                        </Button>
+                    </Tooltip>
                 </Space>
             ),
         },
@@ -295,6 +323,15 @@ const ReferenceDataPage = () => {
     const unitColumns: ColumnsType<BranchUnitDepartment> = [
         { title: 'Name', dataIndex: 'name', key: 'name' },
         {
+            title: 'Status',
+            key: 'status',
+            render: (_, record) => (
+                <Tag color={record.is_active === false ? 'default' : 'green'}>
+                    {record.is_active === false ? 'Inactive' : 'Active'}
+                </Tag>
+            ),
+        },
+        {
             title: 'Created At',
             dataIndex: 'created_at',
             key: 'created_at',
@@ -308,9 +345,16 @@ const ReferenceDataPage = () => {
                     <Button type="link" icon={<EditOutlined />} onClick={() => handleUnitEdit(record)}>
                         Edit
                     </Button>
-                    <Button type="link" danger icon={<DeleteOutlined />} onClick={() => handleUnitDelete(record)}>
-                        Delete
-                    </Button>
+                    <Tooltip title={record.is_active === false ? 'Activate' : 'Deactivate'}>
+                        <Button
+                            type="link"
+                            icon={record.is_active === false ? <CheckCircleOutlined /> : <PoweroffOutlined />}
+                            danger={record.is_active !== false}
+                            onClick={() => handleUnitToggle(record)}
+                        >
+                            {record.is_active === false ? 'Activate' : 'Deactivate'}
+                        </Button>
+                    </Tooltip>
                 </Space>
             ),
         },
@@ -318,6 +362,15 @@ const ReferenceDataPage = () => {
 
     const positionColumns: ColumnsType<Position> = [
         { title: 'Name', dataIndex: 'name', key: 'name' },
+        {
+            title: 'Status',
+            key: 'status',
+            render: (_, record) => (
+                <Tag color={record.is_active === false ? 'default' : 'green'}>
+                    {record.is_active === false ? 'Inactive' : 'Active'}
+                </Tag>
+            ),
+        },
         {
             title: 'Created At',
             dataIndex: 'created_at',
@@ -332,9 +385,16 @@ const ReferenceDataPage = () => {
                     <Button type="link" icon={<EditOutlined />} onClick={() => handlePositionEdit(record)}>
                         Edit
                     </Button>
-                    <Button type="link" danger icon={<DeleteOutlined />} onClick={() => handlePositionDelete(record)}>
-                        Delete
-                    </Button>
+                    <Tooltip title={record.is_active === false ? 'Activate' : 'Deactivate'}>
+                        <Button
+                            type="link"
+                            icon={record.is_active === false ? <CheckCircleOutlined /> : <PoweroffOutlined />}
+                            danger={record.is_active !== false}
+                            onClick={() => handlePositionToggle(record)}
+                        >
+                            {record.is_active === false ? 'Activate' : 'Deactivate'}
+                        </Button>
+                    </Tooltip>
                 </Space>
             ),
         },

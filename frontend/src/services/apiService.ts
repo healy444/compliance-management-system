@@ -18,7 +18,8 @@ const getCsrfHeaders = () => {
 const getRootUrl = () => api.defaults.baseURL?.replace('/api', '') || 'http://localhost:8001';
 
 export const agencyService = {
-    getAll: async () => (await api.get<Agency[]>('/agencies')).data,
+    getAll: async (params?: { active_only?: boolean }) =>
+        (await api.get<Agency[]>('/agencies', { params })).data,
     create: async (data: any) => {
         const rootUrl = getRootUrl();
         await api.get('/sanctum/csrf-cookie', { baseURL: rootUrl });
@@ -37,7 +38,8 @@ export const agencyService = {
 };
 
 export const branchUnitDepartmentService = {
-    getAll: async () => (await api.get<BranchUnitDepartment[]>('/branch-unit-departments')).data,
+    getAll: async (params?: { active_only?: boolean }) =>
+        (await api.get<BranchUnitDepartment[]>('/branch-unit-departments', { params })).data,
     create: async (data: any) => {
         const rootUrl = getRootUrl();
         await api.get('/sanctum/csrf-cookie', { baseURL: rootUrl });
@@ -56,7 +58,8 @@ export const branchUnitDepartmentService = {
 };
 
 export const positionService = {
-    getAll: async () => (await api.get<Position[]>('/positions')).data,
+    getAll: async (params?: { active_only?: boolean }) =>
+        (await api.get<Position[]>('/positions', { params })).data,
     create: async (data: any) => {
         const rootUrl = getRootUrl();
         await api.get('/sanctum/csrf-cookie', { baseURL: rootUrl });
@@ -82,6 +85,9 @@ export const requirementService = {
         agency_id?: number;
         category?: string;
         compliance_status?: string;
+        status?: 'compliant' | 'complied' | 'pending' | 'overdue' | 'na';
+        sort_by?: 'id' | 'req_id' | 'requirement';
+        sort_dir?: 'asc' | 'desc';
     }) => (await api.get<PaginatedResponse<Requirement>>('/requirements', { params })).data,
     getMine: async () => (await api.get<Requirement[]>('/requirements/my')).data,
     exportCsv: async (params?: {
@@ -149,10 +155,12 @@ export const uploadService = {
 
 export const dashboardService = {
     getStats: async () => (await api.get<{
+        total_agencies: number;
         total_requirements: number;
         compliant: number;
         pending: number;
         overdue: number;
+        for_approval: number;
         compliance_rate: number;
     }>('/dashboard/stats')).data,
     getActivity: async () => (await api.get<any[]>('/dashboard/activity')).data,
@@ -211,5 +219,17 @@ export const userService = {
         const rootUrl = getRootUrl();
         await api.get('/sanctum/csrf-cookie', { baseURL: rootUrl });
         await api.put(`/users/${id}/password`, data, { headers: getCsrfHeaders() });
+    },
+    import: async (file: File) => {
+        const rootUrl = getRootUrl();
+        const formData = new FormData();
+        formData.append('file', file);
+        await api.get('/sanctum/csrf-cookie', { baseURL: rootUrl });
+        return (await api.post('/users/import', formData, {
+            headers: {
+                ...getCsrfHeaders(),
+                'Content-Type': 'multipart/form-data',
+            },
+        })).data;
     },
 };

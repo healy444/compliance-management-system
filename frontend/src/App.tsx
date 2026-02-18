@@ -8,13 +8,13 @@ import RequirementsPage from './pages/RequirementsPage';
 import MyRequirementsPage from './pages/MyRequirementsPage';
 import ApprovalsPage from './pages/ApprovalsPage';
 import AuditTrailPage from './pages/AuditTrailPage';
-import ReportsPage from './pages/ReportsPage';
 import MainLayout from './components/layout/MainLayout';
 import { authService } from './services/authService';
 import ProfilePage from './pages/ProfilePage';
 import UsersPage from './pages/UsersPage';
 import './index.css';
 import { canAccessPath, getAccessLevel, getDefaultRoute, type AccessLevel } from './lib/access';
+import LoadingScreen from './components/common/LoadingScreen';
 
 type AuthState = 'checking' | 'authed' | 'guest';
 
@@ -22,6 +22,7 @@ const RequireAccess = ({ children }: { children: ReactNode }) => {
     const [authState, setAuthState] = useState<AuthState>('checking');
     const [accessLevel, setAccessLevel] = useState<AccessLevel>('pic');
     const location = useLocation();
+    const fromLogin = Boolean((location.state as { fromLogin?: boolean } | null)?.fromLogin);
 
     useEffect(() => {
         let isActive = true;
@@ -45,7 +46,10 @@ const RequireAccess = ({ children }: { children: ReactNode }) => {
     }, []);
 
     if (authState === 'checking') {
-        return null;
+        if (fromLogin) {
+            return <>{children}</>;
+        }
+        return <LoadingScreen />;
     }
 
     if (authState === 'guest') {
@@ -80,8 +84,8 @@ function App() {
                         <Route path="uploads" element={<ApprovalsPage />} />
                         <Route path="users" element={<UsersPage />} />
                         <Route path="audit-trail" element={<AuditTrailPage />} />
-                        <Route path="reports" element={<ReportsPage />} />
                         <Route path="profile" element={<ProfilePage />} />
+                        <Route path="*" element={<Navigate to="/" replace />} />
                     </Route>
                     <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>

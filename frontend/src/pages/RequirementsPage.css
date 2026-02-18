@@ -29,6 +29,11 @@
   max-width: 100%;
 }
 
+.requirements-filter {
+  width: 200px;
+  max-width: 100%;
+}
+
 .requirements-toolbar-right {
   margin-left: auto;
 }

@@ -1,4 +1,4 @@
-import { List, Card, Button, Tag, Space, Typography, Drawer, Descriptions, Upload, message, Modal, Form, Input, Select } from 'antd';
+import { List, Card, Button, Tag, Space, Typography, Drawer, Descriptions, Upload, message, Modal, Form, Input, Select, Collapse } from 'antd';
 import { UploadOutlined, ClockCircleOutlined, FileTextOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
@@ -15,6 +15,7 @@ const MyRequirementsPage = () => {
     const [uploadModalOpen, setUploadModalOpen] = useState(false);
     const [uploadRequirementId, setUploadRequirementId] = useState<number | null>(null);
     const [uploadFile, setUploadFile] = useState<File | null>(null);
+    const [isUploading, setIsUploading] = useState(false);
     const { data: requirements, isLoading } = useQuery({
         queryKey: ['my-requirements'],
         queryFn: requirementService.getMine,
@@ -174,26 +175,50 @@ const MyRequirementsPage = () => {
                                 >
                                     Upload
                                 </Button>
-                                <List
-                                    dataSource={data.uploads || []}
-                                    locale={{ emptyText: 'No uploads yet.' }}
-                                    renderItem={(upload) => (
-                                        <List.Item>
-                                            <Card style={{ width: '100%' }}>
-                                                <Space size="large">
-                                                    <div>
-                                                        <Text strong>{upload.upload_id}</Text>
-                                                        <div>Uploaded by: {upload.uploader?.employee_name || upload.uploader_email}</div>
-                                                        <div>Uploaded at: {upload.upload_date ? new Date(upload.upload_date).toLocaleString() : 'N/A'}</div>
-                                                    </div>
-                                                    <Tag color={upload.approval_status === 'APPROVED' ? 'success' : upload.approval_status === 'REJECTED' ? 'error' : 'processing'}>
-                                                        {upload.approval_status}
-                                                    </Tag>
-                                                </Space>
-                                            </Card>
-                                        </List.Item>
-                                    )}
-                                />
+                                {(() => {
+                                    const uploads = data.uploads || [];
+                                    if (!uploads.length) {
+                                        return <Text type="secondary">No uploads yet.</Text>;
+                                    }
+                                    const deadlineLabel = data.deadline ? new Date(data.deadline).toLocaleDateString() : 'No deadline';
+                                    return (
+                                        <Collapse
+                                            items={[
+                                                {
+                                                    key: deadlineLabel,
+                                                    label: `Deadline: ${deadlineLabel}`,
+                                                    children: (
+                                                        <List
+                                                            dataSource={uploads}
+                                                            renderItem={(upload) => (
+                                                                <List.Item>
+                                                                    <Card style={{ width: '100%' }}>
+                                                                        <Space size="large">
+                                                                            <div>
+                                                                                <Text strong>{upload.upload_id}</Text>
+                                                                                <div>Uploaded by: {upload.uploader?.employee_name || upload.uploader_email}</div>
+                                                                                <div>Uploaded at: {upload.upload_date ? new Date(upload.upload_date).toLocaleString() : 'N/A'}</div>
+                                                                                {upload.approval_status !== 'PENDING' ? (
+                                                                                    <div>
+                                                                                        {upload.approval_status === 'APPROVED' ? 'Approved' : 'Rejected'} at:{' '}
+                                                                                        {upload.status_change_on ? new Date(upload.status_change_on).toLocaleString() : 'N/A'}
+                                                                                    </div>
+                                                                                ) : null}
+                                                                            </div>
+                                                                            <Tag color={upload.approval_status === 'APPROVED' ? 'success' : upload.approval_status === 'REJECTED' ? 'error' : 'processing'}>
+                                                                                {upload.approval_status}
+                                                                            </Tag>
+                                                                        </Space>
+                                                                    </Card>
+                                                                </List.Item>
+                                                            )}
+                                                        />
+                                                    ),
+                                                },
+                                            ]}
+                                        />
+                                    );
+                                })()}
                             </div>
                         </>
                     );
@@ -205,6 +230,8 @@ const MyRequirementsPage = () => {
                 onCancel={() => setUploadModalOpen(false)}
                 onOk={() => form.submit()}
                 okText="Submit"
+                okButtonProps={{ disabled: isUploading }}
+                confirmLoading={isUploading}
                 destroyOnClose
             >
                 <Form
@@ -233,6 +260,7 @@ const MyRequirementsPage = () => {
                                 formData.append('admin_remarks', values.admin_remarks);
                             }
                         }
+                        setIsUploading(true);
                         uploadService.upload(formData)
                             .then(() => {
                                 message.success('File uploaded.');
@@ -241,18 +269,26 @@ const MyRequirementsPage = () => {
                             })
                             .catch((error: any) => {
                                 message.error(error.response?.data?.message || 'Failed to upload file.');
+                            })
+                            .finally(() => {
+                                setIsUploading(false);
                             });
                     }}
                 >
                     <Form.Item label="Document File" required>
                         <Upload
+                            accept="application/pdf,.pdf"
                             beforeUpload={(file) => {
+                                if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+                                    message.error('Only PDF files are allowed.');
+                                    return Upload.LIST_IGNORE;
+                                }
                                 setUploadFile(file);
                                 return false;
                             }}
                             maxCount={1}
                         >
-                            <Button icon={<UploadOutlined />}>Select File</Button>
+                            <Button icon={<UploadOutlined />} disabled={isUploading}>Select File</Button>
                         </Upload>
                     </Form.Item>
                     <Form.Item label="Comments" name="comments">

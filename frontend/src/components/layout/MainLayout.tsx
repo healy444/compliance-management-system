@@ -9,7 +9,6 @@ import {
     SafetyCertificateOutlined,
     UserOutlined,
     HistoryOutlined,
-    BarChartOutlined,
     LogoutOutlined,
     MenuOutlined,
 } from '@ant-design/icons';
@@ -55,7 +54,6 @@ const MainLayout = () => {
         { key: '/uploads', label: 'Approvals', icon: <SafetyCertificateOutlined /> },
         { key: '/users', label: 'Users', icon: <UserOutlined /> },
         { key: '/audit-trail', label: 'Audit Trail', icon: <HistoryOutlined /> },
-        { key: '/reports', label: 'Reports', icon: <BarChartOutlined /> },
     ];
 
     const handleMenuClick = ({ key }: { key: string }) => {

@@ -8,9 +8,14 @@ use Illuminate\Validation\Rule;
 
 class PositionController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        return response()->json(Position::orderBy('name')->get());
+        $activeOnly = filter_var($request->query('active_only', false), FILTER_VALIDATE_BOOLEAN);
+        $query = Position::query();
+        if ($activeOnly) {
+            $query->where('is_active', true);
+        }
+        return response()->json($query->orderBy('name')->get());
     }
 
     public function store(Request $request)
@@ -27,10 +32,12 @@ class PositionController extends Controller
     {
         $validated = $request->validate([
             'name' => [
+                'sometimes',
                 'required',
                 'string',
                 Rule::unique('positions', 'name')->ignore($position->id),
             ],
+            'is_active' => 'sometimes|boolean',
         ]);
 
         $position->update($validated);
@@ -39,7 +46,7 @@ class PositionController extends Controller
 
     public function destroy(Position $position)
     {
-        $position->delete();
-        return response()->noContent();
+        $position->update(['is_active' => false]);
+        return response()->json($position);
     }
 }

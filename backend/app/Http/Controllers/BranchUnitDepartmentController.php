@@ -8,9 +8,14 @@ use Illuminate\Validation\Rule;
 
 class BranchUnitDepartmentController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        return response()->json(BranchUnitDepartment::orderBy('name')->get());
+        $activeOnly = filter_var($request->query('active_only', false), FILTER_VALIDATE_BOOLEAN);
+        $query = BranchUnitDepartment::query();
+        if ($activeOnly) {
+            $query->where('is_active', true);
+        }
+        return response()->json($query->orderBy('name')->get());
     }
 
     public function store(Request $request)
@@ -27,10 +32,12 @@ class BranchUnitDepartmentController extends Controller
     {
         $validated = $request->validate([
             'name' => [
+                'sometimes',
                 'required',
                 'string',
                 Rule::unique('branch_unit_departments', 'name')->ignore($branchUnitDepartment->id),
             ],
+            'is_active' => 'sometimes|boolean',
         ]);
 
         $branchUnitDepartment->update($validated);
@@ -39,7 +46,7 @@ class BranchUnitDepartmentController extends Controller
 
     public function destroy(BranchUnitDepartment $branchUnitDepartment)
     {
-        $branchUnitDepartment->delete();
-        return response()->noContent();
+        $branchUnitDepartment->update(['is_active' => false]);
+        return response()->json($branchUnitDepartment);
     }
 }

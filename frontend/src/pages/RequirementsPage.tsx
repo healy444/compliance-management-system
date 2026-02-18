@@ -1,8 +1,10 @@
-import { Table, Button, Tag, Drawer, Form, Input, Select, Space, message, Typography, Row, Col, Upload, Tooltip, Descriptions, Modal } from 'antd';
+import { Table, Button, Tag, Drawer, Form, Input, Select, Space, message, Typography, Row, Col, Upload, Tooltip, Descriptions, Modal, Collapse } from 'antd';
 import { PlusOutlined, InfoCircleOutlined, EditOutlined, DeleteOutlined, UploadOutlined, ReloadOutlined } from '@ant-design/icons';
 import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
-import { agencyService, branchUnitDepartmentService, positionService, requirementService, userService } from '../services/apiService';
+import type { SortOrder } from 'antd/es/table/interface';
+import { useLocation } from 'react-router-dom';
+import { agencyService, branchUnitDepartmentService, positionService, requirementService, uploadService, userService } from '../services/apiService';
 import type { ColumnsType } from 'antd/es/table';
 import type { Agency, BranchUnitDepartment, PaginatedResponse, Position, Requirement, User } from '../types';
 import './RequirementsPage.css';
@@ -70,41 +72,82 @@ type RequirementPayload = {
 };
 
 const RequirementsPage = () => {
+    const location = useLocation();
     const [form] = Form.useForm<RequirementFormValues>();
     const [isDrawerOpen, setIsDrawerOpen] = useState(false);
     const [editingRequirement, setEditingRequirement] = useState<Requirement | null>(null);
     const [detailId, setDetailId] = useState<number | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
+    const [statusFilter, setStatusFilter] = useState<'all' | 'na' | 'pending' | 'complied' | 'overdue'>('all');
+    const [sortField, setSortField] = useState<'id' | 'req_id' | 'requirement'>('id');
+    const [sortOrder, setSortOrder] = useState<SortOrder>('ascend');
 
     const [currentPage, setCurrentPage] = useState(1);
     const [pageSize, setPageSize] = useState(25);
+
+    const todayDate = useMemo(() => new Date().toISOString().split('T')[0], []);
+
+    const statusFilterFromUrl = useMemo(() => {
+        const rawStatus = new URLSearchParams(location.search).get('status')?.toLowerCase();
+        if (rawStatus === 'compliant' || rawStatus === 'pending' || rawStatus === 'overdue' || rawStatus === 'na' || rawStatus === 'complied') {
+            return rawStatus === 'compliant' ? 'complied' : rawStatus;
+        }
+        return undefined;
+    }, [location.search]);
+
+    useEffect(() => {
+        if (statusFilterFromUrl) {
+            setStatusFilter(statusFilterFromUrl as typeof statusFilter);
+        }
+    }, [statusFilterFromUrl]);
 
     const getComplianceDisplay = (status?: string) =>
         status ?? 'N/A';
 
     const { data: requirementsResponse, isLoading, isFetching, refetch, error: requirementsError } = useQuery<PaginatedResponse<Requirement>>({
-        queryKey: ['requirements', currentPage, pageSize, searchTerm],
+        queryKey: ['requirements', currentPage, pageSize, searchTerm, statusFilter, sortField, sortOrder],
         queryFn: () => requirementService.getAll({
             page: currentPage,
             per_page: pageSize,
             search: searchTerm.trim() || undefined,
+            status: statusFilter === 'all' ? undefined : statusFilter,
+            sort_by: sortField,
+            sort_dir: sortOrder === 'descend' ? 'desc' : 'asc',
         }),
         placeholderData: keepPreviousData,
     });
 
     const { data: agencies } = useQuery({
-        queryKey: ['agencies'],
-        queryFn: agencyService.getAll,
+        queryKey: ['agencies', 'active'],
+        queryFn: () => agencyService.getAll({ active_only: true }),
+    });
+
+    const { data: agenciesAll } = useQuery({
+        queryKey: ['agencies', 'all'],
+        queryFn: () => agencyService.getAll(),
+        enabled: Boolean(editingRequirement),
     });
 
     const { data: branchUnits } = useQuery({
-        queryKey: ['branch-unit-departments'],
-        queryFn: branchUnitDepartmentService.getAll,
+        queryKey: ['branch-unit-departments', 'active'],
+        queryFn: () => branchUnitDepartmentService.getAll({ active_only: true }),
+    });
+
+    const { data: branchUnitsAll } = useQuery({
+        queryKey: ['branch-unit-departments', 'all'],
+        queryFn: () => branchUnitDepartmentService.getAll(),
+        enabled: Boolean(editingRequirement),
     });
 
     const { data: positions } = useQuery({
-        queryKey: ['positions'],
-        queryFn: positionService.getAll,
+        queryKey: ['positions', 'active'],
+        queryFn: () => positionService.getAll({ active_only: true }),
+    });
+
+    const { data: positionsAll } = useQuery({
+        queryKey: ['positions', 'all'],
+        queryFn: () => positionService.getAll(),
+        enabled: Boolean(editingRequirement),
     });
 
     const { data: usersData } = useQuery({
@@ -117,6 +160,15 @@ const RequirementsPage = () => {
         queryFn: () => requirementService.show(detailId as number),
         enabled: Boolean(detailId),
     });
+
+    const handleViewUpload = async (uploadId: number) => {
+        try {
+            const { url } = await uploadService.getSignedUrl(uploadId, true);
+            window.open(url, '_blank', 'noopener,noreferrer');
+        } catch (error: any) {
+            message.error(error.response?.data?.message || 'Failed to open file.');
+        }
+    };
 
     const createRequirement = useMutation({
         mutationFn: (payload: RequirementPayload) => requirementService.create(payload),
@@ -226,6 +278,8 @@ const RequirementsPage = () => {
             key: 'req_id',
             width: 120,
             render: (value) => <div className="requirements-cell-wrap">{value}</div>,
+            sorter: true,
+            sortOrder: sortField === 'req_id' ? sortOrder : undefined,
         },
         {
             title: 'Requirement Name',
@@ -233,6 +287,8 @@ const RequirementsPage = () => {
             key: 'requirement',
             width: 260,
             render: (text) => <span className="requirements-cell-name">{text}</span>,
+            sorter: true,
+            sortOrder: sortField === 'requirement' ? sortOrder : undefined,
         },
         {
             title: 'Frequency',
@@ -304,6 +360,30 @@ const RequirementsPage = () => {
 
     const requirements = useMemo<Requirement[]>(() => requirementsResponse?.data ?? [], [requirementsResponse]);
 
+    const agencyOptions = useMemo(() => {
+        const list = editingRequirement ? (agenciesAll || agencies || []) : (agencies || []);
+        return list.map((agency: Agency) => ({
+            value: agency.id,
+            label: `${agency.agency_id} - ${agency.name}${agency.is_active === false ? ' (Inactive)' : ''}`,
+        }));
+    }, [agencies, agenciesAll, editingRequirement]);
+
+    const positionOptions = useMemo(() => {
+        const list = editingRequirement ? (positionsAll || positions || []) : (positions || []);
+        return list.map((position: Position) => ({
+            value: position.id,
+            label: `${position.name}${position.is_active === false ? ' (Inactive)' : ''}`,
+        }));
+    }, [positions, positionsAll, editingRequirement]);
+
+    const branchUnitOptions = useMemo(() => {
+        const list = editingRequirement ? (branchUnitsAll || branchUnits || []) : (branchUnits || []);
+        return list.map((unit: BranchUnitDepartment) => ({
+            value: unit.id,
+            label: `${unit.name}${unit.is_active === false ? ' (Inactive)' : ''}`,
+        }));
+    }, [branchUnits, branchUnitsAll, editingRequirement]);
+
     const picUsers = useMemo(() => {
         const users: User[] = usersData?.data || [];
         return users.filter((user) => {
@@ -319,7 +399,7 @@ const RequirementsPage = () => {
 
     useEffect(() => {
         setCurrentPage(1);
-    }, [searchTerm]);
+    }, [searchTerm, statusFilter]);
 
     return (
         <div className="requirements-page">
@@ -333,6 +413,18 @@ const RequirementsPage = () => {
                     onChange={(event) => setSearchTerm(event.target.value)}
                     allowClear
                     className="requirements-search"
+                />
+                <Select
+                    value={statusFilter}
+                    onChange={(value) => setStatusFilter(value)}
+                    options={[
+                        { label: 'All statuses', value: 'all' },
+                        { label: 'N/A', value: 'na' },
+                        { label: 'Pending', value: 'pending' },
+                        { label: 'Complied', value: 'complied' },
+                        { label: 'Overdue', value: 'overdue' },
+                    ]}
+                    className="requirements-filter"
                 />
                 <Space>
                     <Button
@@ -370,6 +462,22 @@ const RequirementsPage = () => {
                 rowKey="id"
                 loading={isLoading}
                 tableLayout="fixed"
+                onChange={(_, __, sorter) => {
+                    const nextSorter = Array.isArray(sorter) ? sorter[0] : sorter;
+                    if (!nextSorter?.order) {
+                        setSortField('id');
+                        setSortOrder('ascend');
+                        return;
+                    }
+                    if (nextSorter.columnKey === 'requirement') {
+                        setSortField('requirement');
+                    } else if (nextSorter.columnKey === 'req_id') {
+                        setSortField('req_id');
+                    } else {
+                        setSortField('id');
+                    }
+                    setSortOrder(nextSorter.order);
+                }}
                 pagination={{
                     current: currentPage,
                     pageSize,
@@ -423,10 +531,7 @@ const RequirementsPage = () => {
                                 rules={[{ required: true, message: 'Agency is required.' }]}
                             >
                                 <Select
-                                    options={(agencies || []).map((agency: Agency) => ({
-                                        value: agency.id,
-                                        label: `${agency.agency_id} - ${agency.name}`,
-                                    }))}
+                                    options={agencyOptions}
                                     showSearch
                                     optionFilterProp="label"
                                     onChange={(value) => {
@@ -496,10 +601,7 @@ const RequirementsPage = () => {
                                 <Select
                                     mode="multiple"
                                     maxTagCount="responsive"
-                                    options={(positions || []).map((position: Position) => ({
-                                        value: position.id,
-                                        label: position.name,
-                                    }))}
+                                    options={positionOptions}
                                     showSearch
                                     optionFilterProp="label"
                                     placeholder="Select position(s)"
@@ -515,10 +617,7 @@ const RequirementsPage = () => {
                                 <Select
                                     mode="multiple"
                                     maxTagCount="responsive"
-                                    options={(branchUnits || []).map((unit: BranchUnitDepartment) => ({
-                                        value: unit.id,
-                                        label: unit.name,
-                                    }))}
+                                    options={branchUnitOptions}
                                     showSearch
                                     optionFilterProp="label"
                                     placeholder="Select branch/unit/department(s)"
@@ -559,7 +658,7 @@ const RequirementsPage = () => {
                         </Col>
                     </Row>
                     <Form.Item label="Deadline" name="deadline">
-                        <Input type="date" />
+                        <Input type="date" min={todayDate} />
                     </Form.Item>
                 </Form>
             </Drawer>
@@ -574,74 +673,119 @@ const RequirementsPage = () => {
                 {isDetailLoading ? (
                     <Text type="secondary">Loading...</Text>
                 ) : (
-                    <Descriptions column={2} bordered size="small">
-                        <Descriptions.Item label="Requirement ID">
-                            {detailData?.req_id || 'N/A'}
-                        </Descriptions.Item>
-                        <Descriptions.Item label="Agency">
-                            {detailData?.agency?.name || 'N/A'}
-                        </Descriptions.Item>
-                        <Descriptions.Item label="Category">
-                            {detailData?.category || 'N/A'}
-                        </Descriptions.Item>
-                        <Descriptions.Item label="Requirement Name" span={2}>
-                            {detailData?.requirement || 'N/A'}
-                        </Descriptions.Item>
-                        <Descriptions.Item label="Description" span={2}>
-                            {detailData?.description || 'N/A'}
-                        </Descriptions.Item>
-                        <Descriptions.Item label="Assigned To">
-                            {getPositionNames(detailData?.position_ids, positions) || 'N/A'}
-                        </Descriptions.Item>
-                        <Descriptions.Item label="Branch/Unit/Department In Charge">
-                            {getBranchUnitNames(detailData?.branch_unit_department_ids, branchUnits) || 'N/A'}
-                        </Descriptions.Item>
-                        <Descriptions.Item label="Person-In-Charge" span={2}>
-                            {detailData?.assignments && detailData.assignments.length > 0 ? (
-                                <div className="requirements-assignments-list">
-                                    {detailData.assignments.map(asgn => (
-                                        <div key={asgn.id} className="requirements-assignment-item">
-                                            <Space>
-                                                <Text strong>{asgn.user?.employee_name}</Text>
-                                                <Tag color={
-                                                    asgn.compliance_status === 'APPROVED' ? 'green' :
-                                                        asgn.compliance_status === 'REJECTED' ? 'red' :
-                                                            asgn.compliance_status === 'SUBMITTED' ? 'blue' :
-                                                                asgn.compliance_status === 'OVERDUE' ? 'orange' : 'default'
-                                                }>
-                                                    {asgn.compliance_status}
-                                                </Tag>
-                                                {asgn.last_submitted_at && (
-                                                    <Text type="secondary">
-                                                        Submitted: {new Date(asgn.last_submitted_at).toLocaleDateString()}
-                                                    </Text>
-                                                )}
-                                            </Space>
-                                        </div>
-                                    ))}
-                                </div>
+                    <>
+                        <Descriptions column={2} bordered size="small">
+                            <Descriptions.Item label="Requirement ID">
+                                {detailData?.req_id || 'N/A'}
+                            </Descriptions.Item>
+                            <Descriptions.Item label="Agency">
+                                {detailData?.agency?.name || 'N/A'}
+                            </Descriptions.Item>
+                            <Descriptions.Item label="Category">
+                                {detailData?.category || 'N/A'}
+                            </Descriptions.Item>
+                            <Descriptions.Item label="Requirement Name" span={2}>
+                                {detailData?.requirement || 'N/A'}
+                            </Descriptions.Item>
+                            <Descriptions.Item label="Description" span={2}>
+                                {detailData?.description || 'N/A'}
+                            </Descriptions.Item>
+                            <Descriptions.Item label="Assigned To">
+                                {getPositionNames(detailData?.position_ids, positionsAll || positions) || 'N/A'}
+                            </Descriptions.Item>
+                            <Descriptions.Item label="Branch/Unit/Department In Charge">
+                                {getBranchUnitNames(detailData?.branch_unit_department_ids, branchUnitsAll || branchUnits) || 'N/A'}
+                            </Descriptions.Item>
+                            <Descriptions.Item label="Person-In-Charge" span={2}>
+                                {detailData?.assignments && detailData.assignments.length > 0 ? (
+                                    <div className="requirements-assignments-list">
+                                        {detailData.assignments.map(asgn => (
+                                            <div key={asgn.id} className="requirements-assignment-item">
+                                                <Space>
+                                                    <Text strong>{asgn.user?.employee_name}</Text>
+                                                    <Tag color={
+                                                        asgn.compliance_status === 'APPROVED' ? 'green' :
+                                                            asgn.compliance_status === 'REJECTED' ? 'red' :
+                                                                asgn.compliance_status === 'SUBMITTED' ? 'blue' :
+                                                                    asgn.compliance_status === 'OVERDUE' ? 'orange' : 'default'
+                                                    }>
+                                                        {asgn.compliance_status}
+                                                    </Tag>
+                                                    {asgn.last_submitted_at && (
+                                                        <Text type="secondary">
+                                                            Submitted: {new Date(asgn.last_submitted_at).toLocaleDateString()}
+                                                        </Text>
+                                                    )}
+                                                </Space>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    getPersonInChargeNames(detailData?.person_in_charge_user_ids, picUsers) || 'N/A'
+                                )}
+                            </Descriptions.Item>
+                            <Descriptions.Item label="Frequency">
+                                {detailData?.frequency || 'N/A'}
+                            </Descriptions.Item>
+                            <Descriptions.Item label="Schedule">
+                                {detailData?.schedule || 'N/A'}
+                            </Descriptions.Item>
+                            <Descriptions.Item label="Deadline">
+                                {detailData?.deadline || 'N/A'}
+                            </Descriptions.Item>
+                            <Descriptions.Item label="Overall Compliance Status" span={2}>
+                                <Tag color={
+                                    detailData?.compliance_status?.includes('100%') ? 'green' :
+                                        detailData?.compliance_status?.includes('Late') ? 'red' : 'blue'
+                                }>
+                                    {getComplianceDisplay(detailData?.compliance_status)}
+                                </Tag>
+                            </Descriptions.Item>
+                        </Descriptions>
+                        <div style={{ marginTop: 24 }}>
+                            <Typography.Title level={5}>Uploads</Typography.Title>
+                            {detailData?.uploads && detailData.uploads.length > 0 ? (
+                                <Collapse
+                                    items={[
+                                        {
+                                            key: detailData.deadline || 'no-deadline',
+                                            label: `Deadline: ${detailData.deadline || 'No deadline'}`,
+                                            children: (
+                                                <Collapse
+                                                    items={detailData.uploads.map((upload) => ({
+                                                        key: String(upload.id),
+                                                        label: `${upload.upload_id} - ${upload.uploader?.employee_name || upload.uploader_email || 'Unknown'}`,
+                                                        children: (
+                                                            <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                                                                <div>Uploaded by: {upload.uploader?.employee_name || upload.uploader_email}</div>
+                                                                <div>Uploaded at: {upload.upload_date ? new Date(upload.upload_date).toLocaleString() : 'N/A'}</div>
+                                                                {upload.approval_status !== 'PENDING' ? (
+                                                                    <div>
+                                                                        {upload.approval_status === 'APPROVED' ? 'Approved' : 'Rejected'} at:{' '}
+                                                                        {upload.status_change_on ? new Date(upload.status_change_on).toLocaleString() : 'N/A'}
+                                                                    </div>
+                                                                ) : null}
+                                                                <Space>
+                                                                    <Tag color={upload.approval_status === 'APPROVED' ? 'success' : upload.approval_status === 'REJECTED' ? 'error' : 'processing'}>
+                                                                        {upload.approval_status}
+                                                                    </Tag>
+                                                                    <Button size="small" onClick={() => handleViewUpload(upload.id)}>
+                                                                        View file
+                                                                    </Button>
+                                                                </Space>
+                                                            </Space>
+                                                        ),
+                                                    }))}
+                                                />
+                                            ),
+                                        },
+                                    ]}
+                                />
                             ) : (
-                                getPersonInChargeNames(detailData?.person_in_charge_user_ids, picUsers) || 'N/A'
+                                <Text type="secondary">No uploads yet.</Text>
                             )}
-                        </Descriptions.Item>
-                        <Descriptions.Item label="Frequency">
-                            {detailData?.frequency || 'N/A'}
-                        </Descriptions.Item>
-                        <Descriptions.Item label="Schedule">
-                            {detailData?.schedule || 'N/A'}
-                        </Descriptions.Item>
-                        <Descriptions.Item label="Deadline">
-                            {detailData?.deadline || 'N/A'}
-                        </Descriptions.Item>
-                        <Descriptions.Item label="Overall Compliance Status" span={2}>
-                            <Tag color={
-                                detailData?.compliance_status?.includes('100%') ? 'green' :
-                                    detailData?.compliance_status?.includes('Late') ? 'red' : 'blue'
-                            }>
-                                {getComplianceDisplay(detailData?.compliance_status)}
-                            </Tag>
-                        </Descriptions.Item>
-                    </Descriptions>
+                        </div>
+                    </>
                 )}
             </Drawer>
         </div>

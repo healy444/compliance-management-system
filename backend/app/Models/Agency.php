@@ -12,6 +12,11 @@ class Agency extends Model
     protected $fillable = [
         'agency_id',
         'name',
+        'is_active',
+    ];
+
+    protected $casts = [
+        'is_active' => 'boolean',
     ];
 
     public function requirements()

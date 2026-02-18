@@ -10,11 +10,13 @@ import phoneSlide2 from '../assets/login/8.png';
 import phoneSlide3 from '../assets/login/9.png';
 import { authService } from '../services/authService';
 import './LoginPage.css';
+import LoadingScreen from '../components/common/LoadingScreen';
 
 const LoginPage: React.FC = () => {
     const [activeSlide, setActiveSlide] = useState(0);
     const [isMobile, setIsMobile] = useState(false);
     const [loading, setLoading] = useState(false);
+    const [checkingSession, setCheckingSession] = useState(true);
     const navigate = useNavigate();
 
     const carouselImages = [desktopSlide1, desktopSlide2, desktopSlide3];
@@ -68,10 +70,15 @@ const LoginPage: React.FC = () => {
             .me()
             .then(() => {
                 if (isActive) {
-                    navigate('/');
+                    navigate('/', { replace: true, state: { fromLogin: true } });
                 }
             })
-            .catch(() => {});
+            .catch(() => {})
+            .finally(() => {
+                if (isActive) {
+                    setCheckingSession(false);
+                }
+            });
 
         return () => {
             isActive = false;
@@ -83,7 +90,7 @@ const LoginPage: React.FC = () => {
         try {
             await authService.login(values);
             message.success('Welcome back!');
-            navigate('/');
+            navigate('/', { replace: true, state: { fromLogin: true } });
         } catch (error: any) {
             console.error('Login Error:', error);
             message.error(error.response?.data?.message || 'Invalid credentials. Please try again.');
@@ -91,6 +98,10 @@ const LoginPage: React.FC = () => {
             setLoading(false);
         }
     };
+
+    if (checkingSession) {
+        return <LoadingScreen />;
+    }
 
     return (
         <div className="login-page">

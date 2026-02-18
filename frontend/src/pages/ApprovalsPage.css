@@ -27,7 +27,43 @@
   color: #52c41a;
 }
 
-.approvals-drawer-footer {
+.approvals-modal-footer {
   display: flex;
   justify-content: flex-end;
+}
+
+.approvals-detail-section {
+  margin-top: 24px;
+}
+
+.approvals-upload-list {
+  width: 100%;
+}
+
+.approvals-upload-item {
+  border: 1px solid #f0f0f0;
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.approvals-upload-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.approvals-upload-title {
+  font-weight: 600;
+}
+
+.approvals-upload-subtitle {
+  font-size: 12px;
+  color: #8c8c8c;
+}
+
+.approvals-upload-remarks {
+  font-size: 12px;
+  color: #8c8c8c;
 }

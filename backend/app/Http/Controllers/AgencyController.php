@@ -7,9 +7,14 @@ use Illuminate\Http\Request;
 
 class AgencyController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        return response()->json(Agency::all());
+        $activeOnly = filter_var($request->query('active_only', false), FILTER_VALIDATE_BOOLEAN);
+        $query = Agency::query();
+        if ($activeOnly) {
+            $query->where('is_active', true);
+        }
+        return response()->json($query->orderBy('agency_id')->get());
     }
 
     public function store(Request $request)
@@ -32,7 +37,8 @@ class AgencyController extends Controller
     public function update(Request $request, Agency $agency)
     {
         $validated = $request->validate([
-            'name' => 'required|string',
+            'name' => 'sometimes|required|string',
+            'is_active' => 'sometimes|boolean',
         ]);
 
         $agency->update($validated);
@@ -41,7 +47,7 @@ class AgencyController extends Controller
 
     public function destroy(Agency $agency)
     {
-        $agency->delete();
-        return response()->noContent();
+        $agency->update(['is_active' => false]);
+        return response()->json($agency);
     }
 }

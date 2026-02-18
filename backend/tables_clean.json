@@ -1,0 +1,38 @@
+{
+    "tables": [
+        "agencies",
+        "audit_logs",
+        "branch_unit_departments",
+        "cache",
+        "cache_locks",
+        "migrations",
+        "model_has_roles",
+        "password_reset_tokens",
+        "permissions",
+        "positions",
+        "requirement_assignments",
+        "requirements",
+        "role_has_permissions",
+        "roles",
+        "uploads",
+        "users"
+    ],
+    "counts": {
+        "agencies": 16,
+        "audit_logs": 281,
+        "branch_unit_departments": 18,
+        "cache": 0,
+        "cache_locks": 0,
+        "migrations": 25,
+        "model_has_roles": 7,
+        "password_reset_tokens": 0,
+        "permissions": 8,
+        "positions": 27,
+        "requirement_assignments": 7,
+        "requirements": 69,
+        "role_has_permissions": 16,
+        "roles": 3,
+        "uploads": 4,
+        "users": 7
+    }
+}

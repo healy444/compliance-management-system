@@ -8,8 +8,9 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Collection;
-use Carbon\Carbon;
+use Illuminate\Support\Facades\Mail;
+use App\Mail\RequirementDeadlineMail;
+use App\Models\RequirementAssignment;
 
 class RequirementController extends Controller
 {
@@ -28,6 +29,36 @@ class RequirementController extends Controller
             $query->where('category', $request->query('category'));
         }
 
+        if ($request->filled('status')) {
+            $status = strtolower((string) $request->query('status'));
+            if ($status === 'na') {
+                $query->whereNull('deadline');
+            } elseif ($status === 'compliant' || $status === 'complied') {
+                $query->whereNotNull('deadline')
+                    ->whereHas('assignments')
+                    ->whereDoesntHave('assignments', function ($assignmentQuery) {
+                        $assignmentQuery->where('compliance_status', '!=', 'APPROVED');
+                    });
+            } elseif ($status === 'overdue') {
+                $query->whereNotNull('deadline')
+                    ->whereHas('assignments', function ($assignmentQuery) {
+                        $assignmentQuery->where('compliance_status', 'OVERDUE');
+                    });
+            } elseif ($status === 'pending') {
+                $query->whereNotNull('deadline')
+                    ->where(function ($statusQuery) {
+                        $statusQuery->whereDoesntHave('assignments')
+                            ->orWhere(function ($subQuery) {
+                                $subQuery->whereHas('assignments', function ($assignmentQuery) {
+                                    $assignmentQuery->where('compliance_status', '!=', 'APPROVED');
+                                })->whereDoesntHave('assignments', function ($assignmentQuery) {
+                                    $assignmentQuery->where('compliance_status', 'OVERDUE');
+                                });
+                            });
+                    });
+            }
+        }
+
         if ($request->filled('search')) {
             $term = trim((string) $request->query('search'));
             $query->where(function ($q) use ($term) {
@@ -44,7 +75,18 @@ class RequirementController extends Controller
             });
         }
 
-        $page = $query->orderByDesc('updated_at')->paginate($perPage);
+        $sortBy = strtolower((string) $request->query('sort_by', 'id'));
+        $sortDir = strtolower((string) $request->query('sort_dir', 'asc')) === 'desc' ? 'desc' : 'asc';
+
+        if ($sortBy === 'requirement') {
+            $query->orderBy('requirement', $sortDir);
+        } elseif ($sortBy === 'req_id') {
+            $query->orderBy('req_id', $sortDir);
+        } else {
+            $query->orderBy('id', $sortDir);
+        }
+
+        $page = $query->paginate($perPage);
         $page->getCollection()->each(function ($requirement) {
             $requirement->compliance_status = $this->summarizeComplianceStatus($requirement);
         });
@@ -157,7 +199,7 @@ class RequirementController extends Controller
             'description' => 'nullable|string',
             'frequency' => 'required|string',
             'schedule' => 'nullable|string',
-            'deadline' => 'nullable|date',
+            'deadline' => 'nullable|date|after_or_equal:today',
             'position_ids' => 'nullable',
             'branch_unit_department_ids' => 'nullable',
             'person_in_charge_user_ids' => 'nullable',
@@ -174,8 +216,9 @@ class RequirementController extends Controller
             $requirement = Requirement::create($validated);
 
             $picUserIds = $this->parseIdList($validated['person_in_charge_user_ids']);
+            $assignments = [];
             foreach ($picUserIds as $userId) {
-                \App\Models\RequirementAssignment::create([
+                $assignments[] = RequirementAssignment::create([
                     'assignment_id' => 'ASGN-' . strtoupper(\Illuminate\Support\Str::random(10)),
                     'requirement_id' => $requirement->id,
                     'assigned_to_user_id' => $userId,
@@ -184,13 +227,15 @@ class RequirementController extends Controller
                 ]);
             }
 
+            $this->notifyAssignmentsDeadline($assignments, 'assigned');
+
             return response()->json($requirement, 211);
         });
     }
 
     public function show(Requirement $requirement)
     {
-        $requirement->load(['agency', 'assignments.user', 'assignments.uploads.uploader']);
+        $requirement->load(['agency', 'assignments.user', 'assignments.uploads.uploader', 'uploads.uploader']);
         $requirement->compliance_status = $this->summarizeComplianceStatus($requirement);
 
         return response()->json($requirement);
@@ -204,13 +249,15 @@ class RequirementController extends Controller
             'description' => 'nullable|string',
             'frequency' => 'string',
             'schedule' => 'nullable|string',
-            'deadline' => 'nullable|date',
+            'deadline' => 'nullable|date|after_or_equal:today',
             'position_ids' => 'nullable',
             'branch_unit_department_ids' => 'nullable',
             'person_in_charge_user_ids' => 'nullable',
         ]);
 
         return DB::transaction(function () use ($validated, $requirement) {
+            $originalDeadline = $requirement->deadline;
+            $newAssignments = [];
             if (array_key_exists('position_ids', $validated)) {
                 $validated['position_ids'] = $this->normalizeIdList($validated['position_ids']);
             }
@@ -230,7 +277,7 @@ class RequirementController extends Controller
                 // Add new assignments
                 $toAdd = array_diff($newPicUserIds, $oldPicUserIds);
                 foreach ($toAdd as $userId) {
-                    \App\Models\RequirementAssignment::create([
+                    $newAssignments[] = RequirementAssignment::create([
                         'assignment_id' => 'ASGN-' . strtoupper(\Illuminate\Support\Str::random(10)),
                         'requirement_id' => $requirement->id,
                         'assigned_to_user_id' => $userId,
@@ -246,6 +293,18 @@ class RequirementController extends Controller
             }
 
             $requirement->update($validated);
+
+            $deadlineChanged = array_key_exists('deadline', $validated)
+                && $validated['deadline']
+                && $validated['deadline'] !== $originalDeadline;
+
+            if ($deadlineChanged) {
+                $allAssignments = $requirement->assignments()->with('user', 'requirement')->get();
+                $this->notifyAssignmentsDeadline($allAssignments, 'updated');
+            } elseif (!empty($newAssignments)) {
+                $this->notifyAssignmentsDeadline($newAssignments, 'assigned');
+            }
+
             return response()->json($requirement);
         });
     }
@@ -307,6 +366,10 @@ class RequirementController extends Controller
 
     private function summarizeComplianceStatus(Requirement $requirement): string
     {
+        if (!$requirement->deadline) {
+            return 'N/A';
+        }
+
         $assignments = $requirement->assignments;
         if ($assignments->isEmpty()) {
             return 'No PIC assigned';
@@ -332,5 +395,33 @@ class RequirementController extends Controller
         }
 
         return 'Pending (' . $percent . '%)';
+    }
+
+    private function notifyAssignmentsDeadline($assignments, string $context): void
+    {
+        foreach ($assignments as $assignment) {
+            $assignment->loadMissing(['user', 'requirement']);
+            if (!$assignment->deadline && $context !== 'assigned') {
+                continue;
+            }
+            if ($assignment->compliance_status === 'APPROVED') {
+                continue;
+            }
+            $pic = $assignment->user;
+            if (!$pic || !$pic->email) {
+                continue;
+            }
+
+            try {
+                Mail::to($pic->email)->send(new RequirementDeadlineMail($assignment, $context));
+            } catch (\Throwable $e) {
+                \Log::error('Failed to send requirement deadline email', [
+                    'assignment_id' => $assignment->id,
+                    'email' => $pic->email,
+                    'context' => $context,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
     }
 }

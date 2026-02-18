@@ -10,6 +10,10 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\URL;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Mail;
+use App\Models\User;
+use App\Mail\SubmissionPendingReviewMail;
+use App\Mail\SubmissionStatusMail;
 
 class UploadController extends Controller
 {
@@ -17,7 +21,7 @@ class UploadController extends Controller
     {
         $request->validate([
             'requirement_id' => 'required|exists:requirements,id',
-            'doc_file' => 'required|file|mimes:pdf,docx,xlsx,png,jpg|max:10240',
+            'doc_file' => 'required|file|mimes:pdf|max:10240',
             'comments' => 'nullable|string',
         ]);
 
@@ -84,6 +88,10 @@ class UploadController extends Controller
                 }
 
                 $assignment->update($updateData);
+            }
+
+            if ($approvalStatus === 'PENDING') {
+                $this->notifySpecialistsPendingReview($upload);
             }
 
             return response()->json($upload, 211);
@@ -163,6 +171,8 @@ class UploadController extends Controller
                 ]);
             }
 
+            $this->notifySubmissionStatus($upload);
+
             return response()->json($upload);
         });
     }
@@ -180,9 +190,11 @@ class UploadController extends Controller
 
             if ($upload->assignment) {
                 $upload->assignment->update([
-                    'compliance_status' => 'REJECTED',
+                    'compliance_status' => 'PENDING',
                 ]);
             }
+
+            $this->notifySubmissionStatus($upload);
 
             return response()->json($upload);
         });
@@ -206,5 +218,36 @@ class UploadController extends Controller
         }
 
         return response()->download($fullPath, $fileName);
+    }
+
+    private function notifySpecialistsPendingReview(Upload $upload): void
+    {
+        $specialistEmails = User::role(['Compliance & Admin Specialist', 'Super Admin'])
+            ->pluck('email')
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        if (empty($specialistEmails)) {
+            return;
+        }
+
+        Mail::to($specialistEmails)->send(new SubmissionPendingReviewMail($upload));
+    }
+
+    private function notifySubmissionStatus(Upload $upload): void
+    {
+        $upload->loadMissing(['uploader', 'assignment.user', 'requirement']);
+
+        $recipientEmail = $upload->uploader?->email
+            ?? $upload->assignment?->user?->email
+            ?? $upload->uploader_email;
+
+        if (!$recipientEmail) {
+            return;
+        }
+
+        Mail::to($recipientEmail)->send(new SubmissionStatusMail($upload));
     }
 }
