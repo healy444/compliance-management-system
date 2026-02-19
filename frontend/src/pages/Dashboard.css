@@ -18,6 +18,193 @@
   margin-top: 24px;
 }
 
+.dashboard-status-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+  margin-bottom: 12px;
+}
+
+.dashboard-status-legend--calendar {
+  justify-content: flex-start;
+}
+
+.dashboard-status-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dashboard-status-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.dashboard-agency-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(60px, 1fr));
+  column-gap: 6px;
+  row-gap: 12px;
+  align-items: end;
+  justify-items: center;
+}
+
+.dashboard-agency-column {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.dashboard-agency-stack {
+  width: 30px;
+  height: 200px;
+  display: flex;
+  flex-direction: column-reverse;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #f5f5f5;
+  box-shadow: inset 0 0 0 1px #f0f0f0;
+}
+
+.dashboard-agency-segment {
+  width: 100%;
+}
+
+.dashboard-agency-column-label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  text-align: center;
+  font-size: 12px;
+  min-height: 28px;
+  justify-content: flex-start;
+}
+
+.dashboard-agency-name {
+  min-height: 14px;
+  line-height: 14px;
+}
+
+.dashboard-agency-label--small {
+  font-size: 10px;
+  line-height: 12px;
+}
+
+.status-pending {
+  background: #faad14;
+}
+
+.status-complied {
+  background: #52c41a;
+}
+
+.status-na {
+  background: #bfbfbf;
+}
+
+.status-overdue {
+  background: #ff4d4f;
+}
+
+.status-approval {
+  background: #1677ff;
+}
+
+.dashboard-status-tag {
+  border: none;
+  color: #fff;
+  font-weight: 500;
+}
+
+.dashboard-req-item .ant-list-item-meta-title {
+  font-weight: 600;
+}
+
+.dashboard-modal-loading {
+  padding: 16px 0;
+  text-align: center;
+  color: #999;
+}
+
+.dashboard-calendar-header {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+  align-items: center;
+}
+
+.dashboard-calendar-select {
+  min-width: 110px;
+}
+
+.dashboard-calendar-nav {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+}
+
+.dashboard-calendar-cell {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  min-height: 28px;
+  margin-top: 4px;
+  border-radius: 6px;
+}
+
+.dashboard-calendar-cell.status-pending {
+  background: rgba(250, 173, 20, 0.15);
+}
+
+.dashboard-calendar-cell.status-complied {
+  background: rgba(82, 196, 26, 0.15);
+}
+
+.dashboard-calendar-cell.status-na {
+  background: rgba(191, 191, 191, 0.2);
+}
+
+.dashboard-calendar-cell.status-overdue {
+  background: rgba(255, 77, 79, 0.15);
+}
+
+.dashboard-calendar-cell.status-approval {
+  background: rgba(22, 119, 255, 0.15);
+}
+
+.dashboard-calendar-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding-bottom: 2px;
+}
+
+.dashboard-calendar-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+.dashboard-calendar-more {
+  font-size: 10px;
+  color: #999;
+}
+
+.dashboard-latest-upload {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dashboard-latest-upload-actions {
+  margin-top: 12px;
+}
+
 .dashboard-stat .dashboard-stat-icon {
   font-size: 24px;
 }

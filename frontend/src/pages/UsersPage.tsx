@@ -55,6 +55,7 @@ const UsersPage = () => {
     const [roleFilter, setRoleFilter] = useState('all');
     const [isSuperAdmin, setIsSuperAdmin] = useState(false);
     const [isSpecialist, setIsSpecialist] = useState(false);
+    const [currentUserId, setCurrentUserId] = useState<number | null>(null);
     const [isImportOpen, setIsImportOpen] = useState(false);
     const [importFile, setImportFile] = useState<File | null>(null);
     const [templateFormat, setTemplateFormat] = useState<'csv' | 'xlsx'>('csv');
@@ -82,6 +83,7 @@ const UsersPage = () => {
                         role.name === 'Compliance & Admin Specialist' || role.name === 'Admin Specialist'
                     )
                 );
+                setCurrentUserId(data?.user?.id ?? null);
             })
             .catch(() => {});
 
@@ -109,6 +111,21 @@ const UsersPage = () => {
             return true;
         }
         return canManageUserType(user.user_type) && !isSuperAdminUser(user);
+    };
+    const canToggleActiveFor = (user: User) => {
+        if (isSuperAdmin) {
+            return true;
+        }
+        if (!isSpecialist) {
+            return false;
+        }
+        if (isSuperAdminUser(user)) {
+            return false;
+        }
+        if (currentUserId && user.id === currentUserId) {
+            return false;
+        }
+        return canManageUserType(user.user_type);
     };
     const canResetPasswordFor = (user: User) => isSuperAdmin || (isSpecialist && isPicUser(user));
 
@@ -315,7 +332,7 @@ const UsersPage = () => {
     };
 
     const handleToggleActive = (user: User, isActive: boolean) => {
-        if (!canManageTarget(user)) {
+        if (!canToggleActiveFor(user)) {
             message.error('You do not have permission to update this user.');
             return;
         }
@@ -391,13 +408,13 @@ const UsersPage = () => {
                             }
                             aria-label={record.is_active ?? true ? 'Deactivate user' : 'Activate user'}
                             onClick={() => handleToggleActive(record, !(record.is_active ?? true))}
-                            disabled={!canManageTarget(record)}
+                            disabled={!canToggleActiveFor(record)}
                         />
                     </Tooltip>
                 </Space>
             ),
         },
-    ]), [canManageTarget, handleEdit, handleResetPassword, handleToggleActive, isSuperAdmin, updateUser]);
+    ]), [canManageTarget, canToggleActiveFor, handleEdit, handleResetPassword, handleToggleActive, isSuperAdmin, updateUser]);
 
     return (
         <div className="users-page">

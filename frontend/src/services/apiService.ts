@@ -167,9 +167,13 @@ export const dashboardService = {
     getAgencyStats: async () => (await api.get<{
         agency: string;
         name: string;
-        rate: number;
         total: number;
+        na: number;
+        pending: number;
+        overdue: number;
+        complied: number;
     }[]>('/dashboard/agency-stats')).data,
+    getCalendar: async () => (await api.get<Record<string, { id: number; name: string; status: 'pending' | 'complied' | 'overdue' | 'na' | 'for_approval'; pic?: string; }[]>>('/dashboard/calendar')).data,
 };
 
 export const auditService = {

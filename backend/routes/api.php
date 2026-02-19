@@ -18,6 +18,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/dashboard/stats', [DashboardController::class, 'stats']);
     Route::get('/dashboard/activity', [DashboardController::class, 'activity']);
     Route::get('/dashboard/agency-stats', [DashboardController::class, 'complianceByAgency']);
+    Route::get('/dashboard/calendar', [DashboardController::class, 'calendar']);
 
     Route::get('/profile', [ProfileController::class, 'show']);
     Route::put('/profile', [ProfileController::class, 'update']);

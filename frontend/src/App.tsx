@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { type ReactNode } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { ConfigProvider } from 'antd';
 import LoginPage from './pages/LoginPage';
@@ -15,44 +15,23 @@ import UsersPage from './pages/UsersPage';
 import './index.css';
 import { canAccessPath, getAccessLevel, getDefaultRoute, type AccessLevel } from './lib/access';
 import LoadingScreen from './components/common/LoadingScreen';
-
-type AuthState = 'checking' | 'authed' | 'guest';
+import { useQuery } from '@tanstack/react-query';
 
 const RequireAccess = ({ children }: { children: ReactNode }) => {
-    const [authState, setAuthState] = useState<AuthState>('checking');
-    const [accessLevel, setAccessLevel] = useState<AccessLevel>('pic');
     const location = useLocation();
-    const fromLogin = Boolean((location.state as { fromLogin?: boolean } | null)?.fromLogin);
+    const { data, isLoading, isError } = useQuery({
+        queryKey: ['me'],
+        queryFn: authService.me,
+        retry: false,
+    });
 
-    useEffect(() => {
-        let isActive = true;
-        authService
-            .me()
-            .then((data) => {
-                if (isActive) {
-                    setAuthState('authed');
-                    setAccessLevel(getAccessLevel(data?.user?.roles || []));
-                }
-            })
-            .catch(() => {
-                if (isActive) {
-                    setAuthState('guest');
-                }
-            });
+    const accessLevel: AccessLevel = getAccessLevel(data?.user?.roles || []);
 
-        return () => {
-            isActive = false;
-        };
-    }, []);
-
-    if (authState === 'checking') {
-        if (fromLogin) {
-            return <>{children}</>;
-        }
+    if (isLoading) {
         return <LoadingScreen />;
     }
 
-    if (authState === 'guest') {
+    if (isError) {
         return <Navigate to="/login" replace />;
     }
 

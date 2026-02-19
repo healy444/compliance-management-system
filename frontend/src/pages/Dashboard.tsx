@@ -1,22 +1,26 @@
-import { Card, Row, Col, Statistic, Progress, Typography as AntTypography, Space } from 'antd';
+import { Card, Row, Col, Statistic, Typography as AntTypography, Space, Calendar, List, Modal, Button, Empty, Tag, Select } from 'antd';
 import {
     FileTextOutlined,
     CheckCircleOutlined,
     ClockCircleOutlined,
     WarningOutlined,
     BankOutlined,
-    PieChartOutlined,
     BarChartOutlined,
-    FileProtectOutlined
+    FileProtectOutlined,
+    CalendarOutlined,
+    LeftOutlined,
+    RightOutlined,
+    EyeOutlined
 } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
-import { dashboardService } from '../services/apiService';
+import { dashboardService, requirementService, uploadService } from '../services/apiService';
 import { authService } from '../services/authService';
 import { getAccessLevel } from '../lib/access';
 import { useNavigate } from 'react-router-dom';
+import { useMemo, useState } from 'react';
 import './Dashboard.css';
 
-const { Text, Title } = AntTypography;
+const { Text } = AntTypography;
 
 const Dashboard = () => {
     const navigate = useNavigate();
@@ -38,6 +42,116 @@ const Dashboard = () => {
         queryFn: dashboardService.getAgencyStats,
     });
 
+    const { data: calendarData } = useQuery({
+        queryKey: ['dashboard-calendar'],
+        queryFn: dashboardService.getCalendar,
+    });
+
+    const { data: licenseRequirements, isLoading: licenseLoading } = useQuery({
+        queryKey: ['requirements', 'license-dashboard'],
+        queryFn: () => requirementService.getAll({ category: 'License', per_page: 200 }),
+    });
+
+    const { data: permitRequirements, isLoading: permitLoading } = useQuery({
+        queryKey: ['requirements', 'permit-dashboard'],
+        queryFn: () => requirementService.getAll({ category: 'Permit', per_page: 200 }),
+    });
+
+    const { data: certificationRequirements, isLoading: certificationLoading } = useQuery({
+        queryKey: ['requirements', 'certification-dashboard'],
+        queryFn: () => requirementService.getAll({ category: 'Certification', per_page: 200 }),
+    });
+
+    const [detailOpen, setDetailOpen] = useState(false);
+    const [detailRequirementId, setDetailRequirementId] = useState<number | null>(null);
+    const [dateModalOpen, setDateModalOpen] = useState(false);
+    const [selectedDateLabel, setSelectedDateLabel] = useState('');
+    const [selectedDateItems, setSelectedDateItems] = useState<Array<{ id: number; name: string; status: string; pic?: string }>>([]);
+
+    const { data: requirementDetail, isLoading: detailLoading } = useQuery({
+        queryKey: ['requirement-detail', detailRequirementId],
+        queryFn: () => requirementService.show(detailRequirementId as number),
+        enabled: Boolean(detailRequirementId),
+    });
+
+    const combinedRequirements = useMemo(() => {
+        const list = [
+            ...(licenseRequirements?.data || []),
+            ...(permitRequirements?.data || []),
+            ...(certificationRequirements?.data || []),
+        ];
+        return list.sort((a, b) => String(a.requirement || '').localeCompare(String(b.requirement || ''), undefined, { sensitivity: 'base' }));
+    }, [licenseRequirements, permitRequirements, certificationRequirements]);
+
+    const statusLegend = [
+        { key: 'pending', label: 'Pending', className: 'status-pending' },
+        { key: 'complied', label: 'Complied', className: 'status-complied' },
+        { key: 'na', label: 'N/A', className: 'status-na' },
+        { key: 'overdue', label: 'Overdue', className: 'status-overdue' },
+    ];
+
+    const calendarLegend = [
+        { key: 'pending', label: 'Pending', className: 'status-pending' },
+        { key: 'complied', label: 'Complied', className: 'status-complied' },
+        { key: 'na', label: 'N/A', className: 'status-na' },
+        { key: 'overdue', label: 'Overdue', className: 'status-overdue' },
+        { key: 'for_approval', label: 'For Approval', className: 'status-approval' },
+    ];
+
+    const calendarMap = useMemo(() => calendarData || {}, [calendarData]);
+
+    const normalizeStatus = (value?: string | null) => {
+        const text = (value || '').toLowerCase();
+        if (!text || text === 'n/a' || text === 'na') {
+            return 'na';
+        }
+        if (text.includes('late') || text.includes('overdue')) {
+            return 'overdue';
+        }
+        if (text.includes('complied')) {
+            return 'complied';
+        }
+        if (text.includes('pending')) {
+            return 'pending';
+        }
+        return 'na';
+    };
+
+    const statusClass = (status: string) => {
+        if (status === 'for_approval') {
+            return 'status-approval';
+        }
+        return `status-${status}`;
+    };
+
+    const latestUpload = useMemo(() => {
+        const uploads = requirementDetail?.uploads || [];
+        if (!uploads.length) {
+            return null;
+        }
+        return uploads
+            .slice()
+            .sort((a: any, b: any) => {
+                const aTime = new Date(a.upload_date || a.created_at || 0).getTime();
+                const bTime = new Date(b.upload_date || b.created_at || 0).getTime();
+                return bTime - aTime;
+            })[0];
+    }, [requirementDetail]);
+
+    const handleOpenDetail = (id: number) => {
+        setDetailRequirementId(id);
+        setDetailOpen(true);
+    };
+
+    const handleViewFile = async (uploadId: number) => {
+        try {
+            const { url } = await uploadService.getSignedUrl(uploadId, true);
+            window.open(url, '_blank', 'noopener,noreferrer');
+        } catch {
+            // noop: use a simple fallback to avoid noisy dashboard errors
+        }
+    };
+
     const kpiCards = [
         { title: 'Total Agencies', value: stats?.total_agencies || 0, icon: <BankOutlined />, colorClass: 'dashboard-stat--blue', to: '/agencies' },
         { title: 'Total Requirements', value: stats?.total_requirements || 0, icon: <FileTextOutlined />, colorClass: 'dashboard-stat--blue', to: '/requirements' },
@@ -49,8 +163,6 @@ const Dashboard = () => {
 
     return (
         <div className="dashboard-page">
-            <h2 className="dashboard-title">Dashboard</h2>
-
             {showKpis ? (
                 <Row gutter={[16, 16]} className="dashboard-kpi-row">
                     {kpiCards.map((stat, index) => (
@@ -80,100 +192,251 @@ const Dashboard = () => {
             ) : null}
 
             <Row gutter={[16, 16]} className="dashboard-row">
-                <Col xs={24} lg={12}>
-                    <Card title="Compliance Rate" loading={statsLoading} variant="outlined">
-                        <div className="dashboard-center">
-                            <Progress
-                                type="circle"
-                                percent={stats?.compliance_rate || 0}
-                                format={percent => `${percent}%`}
-                                strokeColor="#52c41a"
-                                size={200}
-                            />
-                            <p className="dashboard-muted">Overall compliance rate</p>
-                        </div>
-                    </Card>
-                </Col>
-            </Row>
-
-            <Title level={4} className="dashboard-section-title">Reports Snapshot</Title>
-
-            <Row gutter={[24, 24]}>
-                <Col xs={24} md={12}>
-                    <Card title={<Space><PieChartOutlined /> Compliance by Agency</Space>} loading={agencyLoading} variant="outlined">
-                        {(agencyStats || []).map((agency) => (
-                            <div key={agency.agency} className="reports-row">
-                                <div className="reports-row-header">
-                                    <Text strong>{agency.agency}</Text>
-                                    <Text type="secondary">{agency.rate}%</Text>
-                                </div>
-                                <Progress percent={agency.rate} showInfo={false} strokeColor="#1890ff" />
-                            </div>
-                        ))}
-                    </Card>
-                </Col>
-
-                <Col xs={24} md={12}>
-                    <Card title={<Space><BarChartOutlined /> Submission Trends</Space>} variant="outlined">
-                        <div className="reports-bars">
-                            {[40, 65, 30, 85, 45, 90, 70].map((height, i) => (
-                                <div key={i} className="reports-bar-col">
-                                    <div
-                                        className={`reports-bar reports-bar--${i}`}
-                                        style={{ height: `${height}%` }}
-                                    />
-                                    <Text type="secondary" className="reports-bar-label">
-                                        {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul'][i]}
-                                    </Text>
+                <Col xs={24}>
+                    <Card title={<Space><CalendarOutlined /> Calendar</Space>} variant="outlined">
+                        <div className="dashboard-status-legend dashboard-status-legend--calendar">
+                            {calendarLegend.map((item) => (
+                                <div key={item.key} className="dashboard-status-legend-item">
+                                    <span className={`dashboard-status-swatch ${item.className}`} />
+                                    <Text type="secondary">{item.label}</Text>
                                 </div>
                             ))}
                         </div>
+                        <Calendar
+                            fullscreen={false}
+                            dateCellRender={(value) => {
+                                const dateKey = value.format('YYYY-MM-DD');
+                                const items = calendarMap[dateKey] || [];
+                                if (!items.length) {
+                                    return null;
+                                }
+                                const uniqueStatuses = Array.from(new Set(items.map((item) => item.status)));
+                                const singleStatus = uniqueStatuses.length === 1 ? uniqueStatuses[0] : null;
+                                const dots = items.slice(0, 4);
+                                return (
+                                    <div className={`dashboard-calendar-cell ${singleStatus ? statusClass(singleStatus) : ''}`}>
+                                        <div className="dashboard-calendar-dots">
+                                            {dots.map((item) => (
+                                                <span key={item.id} className={`dashboard-calendar-dot ${statusClass(item.status)}`} />
+                                            ))}
+                                            {items.length > 4 ? (
+                                                <span className="dashboard-calendar-more">+{items.length - 4}</span>
+                                            ) : null}
+                                        </div>
+                                    </div>
+                                );
+                            }}
+                            onSelect={(value) => {
+                                const dateKey = value.format('YYYY-MM-DD');
+                                setSelectedDateLabel(value.format('MMMM D, YYYY'));
+                                setSelectedDateItems(calendarMap[dateKey] || []);
+                                setDateModalOpen(true);
+                            }}
+                            headerRender={({ value, onChange }) => {
+                                const year = value.year();
+                                const month = value.month();
+                                const years = Array.from({ length: 10 }, (_, i) => year - 5 + i);
+                                const months = [
+                                    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                                    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+                                ];
+                                return (
+                                    <div className="dashboard-calendar-header">
+                                        <Button
+                                            size="small"
+                                            icon={<LeftOutlined />}
+                                            onClick={() => onChange(value.clone().month(month - 1))}
+                                            className="dashboard-calendar-nav"
+                                        />
+                                        <Select
+                                            value={year}
+                                            onChange={(newYear) => {
+                                                const next = value.clone().year(newYear);
+                                                onChange(next);
+                                            }}
+                                            options={years.map((y) => ({ value: y, label: y }))}
+                                            className="dashboard-calendar-select"
+                                        />
+                                        <Select
+                                            value={month}
+                                            onChange={(newMonth) => {
+                                                const next = value.clone().month(newMonth);
+                                                onChange(next);
+                                            }}
+                                            options={months.map((label, idx) => ({ value: idx, label }))}
+                                            className="dashboard-calendar-select"
+                                        />
+                                        <Button
+                                            size="small"
+                                            icon={<RightOutlined />}
+                                            onClick={() => onChange(value.clone().month(month + 1))}
+                                            className="dashboard-calendar-nav"
+                                        />
+                                    </div>
+                                );
+                            }}
+                        />
                     </Card>
                 </Col>
             </Row>
 
-            <Row gutter={[24, 24]} className="reports-row-gap">
-                <Col xs={24} lg={8}>
-                    <Card className="reports-hero" loading={statsLoading} variant="outlined">
-                        <FileProtectOutlined className="reports-hero-icon" />
-                        <div className="reports-hero-label">Global Compliance Rate</div>
-                        <div className="reports-hero-value">{stats?.compliance_rate || 0}%</div>
-                        <div className="reports-hero-subtitle">Based on latest assignments</div>
-                    </Card>
-                </Col>
-
-                <Col xs={24} lg={8}>
-                    <Card loading={statsLoading} variant="outlined">
-                        <Title level={5}>Compliance Status Breakdown</Title>
-                        <Text type="secondary">Compliant vs Remaining</Text>
-                        <Row className="reports-distribution">
-                            <Col span={12} className="reports-distribution-col reports-distribution-col--border">
-                                <Statistic title="Compliant" value={stats?.compliant || 0} className="reports-stat reports-stat--blue" />
-                            </Col>
-                            <Col span={12} className="reports-distribution-col">
-                                <Statistic title="Pending" value={stats?.pending || 0} className="reports-stat reports-stat--purple" />
-                            </Col>
-                        </Row>
-                    </Card>
-                </Col>
-
-                <Col xs={24} lg={8}>
-                    <Card loading={statsLoading} variant="outlined">
-                        <div className="reports-critical">
-                            <WarningOutlined className="reports-critical-icon" />
-                            <Title level={5} className="reports-critical-title">Overdue Requirements</Title>
+            <Row gutter={[16, 16]} className="dashboard-row">
+                <Col xs={24}>
+                    <Card title={<Space><BarChartOutlined /> Compliance by Agency</Space>} loading={agencyLoading} variant="outlined">
+                        <div className="dashboard-status-legend">
+                            {statusLegend.map((item) => (
+                                <div key={item.key} className="dashboard-status-legend-item">
+                                    <span className={`dashboard-status-swatch ${item.className}`} />
+                                    <Text type="secondary">{item.label}</Text>
+                                </div>
+                            ))}
                         </div>
-                        <div className="dashboard-center" style={{ padding: '20px 0' }}>
-                            <Statistic
-                                value={stats?.overdue || 0}
-                                suffix="Requirements"
-                                styles={{ content: { color: '#ff4d4f' } }}
-                            />
-                            <Text type="secondary">Action required for compliance</Text>
-                        </div>
+                        {(agencyStats || []).length ? (
+                            <div className="dashboard-agency-columns">
+                                {(agencyStats || []).map((agency) => {
+                                    const total = agency.total || 0;
+                                    const segments = [
+                                        { key: 'pending', value: agency.pending, className: 'status-pending' },
+                                        { key: 'complied', value: agency.complied, className: 'status-complied' },
+                                        { key: 'na', value: agency.na, className: 'status-na' },
+                                        { key: 'overdue', value: agency.overdue, className: 'status-overdue' },
+                                    ];
+                                    return (
+                                        <div key={agency.agency} className="dashboard-agency-column">
+                                            <div className="dashboard-agency-stack">
+                                                {segments.map((segment) => {
+                                                    const percent = total > 0 ? (segment.value / total) * 100 : 0;
+                                                    return (
+                                                        <div
+                                                            key={segment.key}
+                                                            className={`dashboard-agency-segment ${segment.className}`}
+                                                            style={{ height: `${percent}%` }}
+                                                            title={`${segment.key}: ${segment.value}`}
+                                                        />
+                                                    );
+                                                })}
+                                            </div>
+                                            <div className="dashboard-agency-column-label">
+                                                <Text
+                                                    strong
+                                                    className={`dashboard-agency-name ${String(agency.agency || '').length > 5 ? 'dashboard-agency-label--small' : ''}`}
+                                                >
+                                                    {agency.agency}
+                                                </Text>
+                                                <Text type="secondary">{total}</Text>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        ) : (
+                            <Empty description="No agency data" />
+                        )}
                     </Card>
                 </Col>
             </Row>
+
+            <Row gutter={[16, 16]} className="dashboard-row">
+                <Col xs={24}>
+                    <Card
+                        title="Regulatory Requirements"
+                        loading={licenseLoading || permitLoading || certificationLoading}
+                        variant="outlined"
+                    >
+                        {combinedRequirements.length ? (
+                            <List
+                                dataSource={combinedRequirements}
+                                renderItem={(item: any) => (
+                                    <List.Item
+                                        className="dashboard-req-item"
+                                        actions={[
+                                            <Button
+                                                key="view"
+                                                type="link"
+                                                icon={<EyeOutlined />}
+                                                onClick={() => handleOpenDetail(item.id)}
+                                            >
+                                                View latest upload
+                                            </Button>,
+                                        ]}
+                                    >
+                                    <List.Item.Meta
+                                        title={item.requirement}
+                                        description={(
+                                            <Space wrap>
+                                                <Tag color="blue">{item.category}</Tag>
+                                                <Text type="secondary">{item.agency?.name || item.agency_id}</Text>
+                                                <Tag className={`dashboard-status-tag ${statusLegend.find(s => s.key === normalizeStatus(item.compliance_status))?.className || 'status-na'}`}>
+                                                    {normalizeStatus(item.compliance_status).toUpperCase()}
+                                                </Tag>
+                                            </Space>
+                                        )}
+                                    />
+                                </List.Item>
+                            )}
+                        />
+                        ) : (
+                            <Empty description="No license/permit requirements" />
+                        )}
+                    </Card>
+                </Col>
+            </Row>
+            <Modal
+                title="Latest Upload"
+                open={detailOpen}
+                onCancel={() => setDetailOpen(false)}
+                footer={null}
+                destroyOnClose
+            >
+                {detailLoading ? (
+                    <div className="dashboard-modal-loading">Loading...</div>
+                ) : latestUpload ? (
+                    <div className="dashboard-latest-upload">
+                        <div><Text strong>Requirement:</Text> {requirementDetail?.requirement}</div>
+                        <div><Text strong>Upload ID:</Text> {latestUpload.upload_id}</div>
+                        <div><Text strong>Uploaded By:</Text> {latestUpload.uploader?.employee_name || latestUpload.uploader_email || 'Unknown'}</div>
+                        <div><Text strong>Uploaded At:</Text> {latestUpload.upload_date ? new Date(latestUpload.upload_date).toLocaleString() : 'N/A'}</div>
+                        <div><Text strong>Status:</Text> {latestUpload.approval_status}</div>
+                        <div className="dashboard-latest-upload-actions">
+                            <Button type="primary" onClick={() => handleViewFile(latestUpload.id)}>
+                                Open file
+                            </Button>
+                        </div>
+                    </div>
+                ) : (
+                    <Empty description="No uploads found" />
+                )}
+            </Modal>
+            <Modal
+                title={`Requirements due on ${selectedDateLabel}`}
+                open={dateModalOpen}
+                onCancel={() => setDateModalOpen(false)}
+                footer={null}
+                destroyOnClose
+            >
+                {selectedDateItems.length ? (
+                    <List
+                        dataSource={selectedDateItems}
+                        renderItem={(item) => (
+                            <List.Item className="dashboard-date-item">
+                                <List.Item.Meta
+                                    title={item.name}
+                                    description={(
+                                        <Space wrap>
+                                            <Tag className={`dashboard-status-tag ${statusClass(item.status)}`}>
+                                                {item.status.replace('_', ' ').toUpperCase()}
+                                            </Tag>
+                                            <Text type="secondary">PIC: {item.pic || 'N/A'}</Text>
+                                        </Space>
+                                    )}
+                                />
+                            </List.Item>
+                        )}
+                    />
+                ) : (
+                    <Empty description="No deadline set for this date" />
+                )}
+            </Modal>
         </div>
     );
 };

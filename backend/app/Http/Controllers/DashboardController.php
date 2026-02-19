@@ -7,6 +7,7 @@ use App\Models\Requirement;
 use App\Models\AuditLog;
 use App\Models\Upload;
 use Illuminate\Http\Request;
+use Carbon\Carbon;
 
 class DashboardController extends Controller
 {
@@ -71,18 +72,119 @@ class DashboardController extends Controller
         $stats = \App\Models\Agency::with(['requirements.assignments'])
             ->get()
             ->map(function ($agency) {
-                $assignments = $agency->requirements->flatMap->assignments;
-                $total = $assignments->count();
-                $compliant = $assignments->where('compliance_status', 'APPROVED')->count();
+                $counts = [
+                    'na' => 0,
+                    'pending' => 0,
+                    'overdue' => 0,
+                    'complied' => 0,
+                ];
+
+                foreach ($agency->requirements as $requirement) {
+                    $status = $this->summarizeRequirementStatus($requirement);
+                    if (array_key_exists($status, $counts)) {
+                        $counts[$status] += 1;
+                    }
+                }
+
+                $total = array_sum($counts);
 
                 return [
                     'agency' => $agency->agency_id,
                     'name' => $agency->name,
-                    'rate' => $total > 0 ? round(($compliant / $total) * 100, 1) : 0,
                     'total' => $total,
+                    'na' => $counts['na'],
+                    'pending' => $counts['pending'],
+                    'overdue' => $counts['overdue'],
+                    'complied' => $counts['complied'],
                 ];
-            });
+            })
+            ->filter(function ($agency) {
+                return ($agency['total'] ?? 0) > 0;
+            })
+            ->values();
 
         return response()->json($stats);
+    }
+
+    public function calendar()
+    {
+        $requirements = Requirement::with(['assignments.user', 'uploads'])
+            ->whereNotNull('deadline')
+            ->get();
+
+        $byDate = [];
+
+        foreach ($requirements as $requirement) {
+            if (!$requirement->deadline) {
+                continue;
+            }
+            $dateKey = Carbon::parse($requirement->deadline)->toDateString();
+            $status = $this->summarizeCalendarStatus($requirement);
+            $byDate[$dateKey][] = [
+                'id' => $requirement->id,
+                'name' => $requirement->requirement,
+                'status' => $status,
+                'pic' => $requirement->assignments
+                    ->pluck('user.employee_name')
+                    ->filter()
+                    ->unique()
+                    ->values()
+                    ->join(', '),
+            ];
+        }
+
+        return response()->json($byDate);
+    }
+
+    private function summarizeRequirementStatus($requirement): string
+    {
+        if (!$requirement->deadline) {
+            return 'na';
+        }
+
+        $assignments = $requirement->assignments;
+        if ($assignments->isEmpty()) {
+            return 'pending';
+        }
+
+        $hasOverdue = $assignments->where('compliance_status', 'OVERDUE')->count() > 0;
+        if ($hasOverdue) {
+            return 'overdue';
+        }
+
+        $allApproved = $assignments->where('compliance_status', 'APPROVED')->count() === $assignments->count();
+        if ($allApproved) {
+            return 'complied';
+        }
+
+        return 'pending';
+    }
+
+    private function summarizeCalendarStatus($requirement): string
+    {
+        if (!$requirement->deadline) {
+            return 'na';
+        }
+
+        $uploads = $requirement->uploads;
+        if ($uploads->where('approval_status', 'PENDING')->count() > 0) {
+            return 'for_approval';
+        }
+
+        $assignments = $requirement->assignments;
+        if ($assignments->isEmpty()) {
+            return 'pending';
+        }
+
+        if ($assignments->where('compliance_status', 'OVERDUE')->count() > 0) {
+            return 'overdue';
+        }
+
+        $allApproved = $assignments->where('compliance_status', 'APPROVED')->count() === $assignments->count();
+        if ($allApproved) {
+            return 'complied';
+        }
+
+        return 'pending';
     }
 }

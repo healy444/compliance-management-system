@@ -1,0 +1,80 @@
+services:
+  # PHP Application (Backend)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: cms-backend
+    restart: unless-stopped
+    tty: true
+    environment:
+      SERVICE_NAME: backend
+      SERVICE_TAGS: dev
+    volumes:
+      - ./backend:/var/www
+      - ./backend/storage:/var/www/storage
+    networks:
+      - cms-network
+    depends_on:
+      - db
+      - redis
+
+  # React Application (Frontend)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: cms-frontend
+    restart: unless-stopped
+    networks:
+      - cms-network
+
+  # Nginx (Reverse Proxy)
+  nginx:
+    image: nginx:stable-alpine
+    container_name: cms-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./backend:/var/www
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf
+    networks:
+      - cms-network
+    depends_on:
+      - backend
+      - frontend
+
+  # MySQL (Database)
+  db:
+    image: mysql:8.0
+    container_name: cms-db
+    restart: unless-stopped
+    tty: true
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_DATABASE: cms_db
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_PASSWORD: password
+      MYSQL_USER: cms_user
+    volumes:
+      - dbdata:/var/lib/mysql
+    networks:
+      - cms-network
+
+  # Redis (Queues/Cache)
+  redis:
+    image: redis:alpine
+    container_name: cms-redis
+    restart: unless-stopped
+    networks:
+      - cms-network
+
+networks:
+  cms-network:
+    driver: bridge
+
+volumes:
+  dbdata:
+    driver: local

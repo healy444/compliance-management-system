@@ -15,6 +15,7 @@ import {
 import { authService } from '../../services/authService';
 import { canAccessPath, getAccessLevel, getDefaultRoute, isMenuKeyAllowed, type AccessLevel } from '../../lib/access';
 import './MainLayout.css';
+import { useQuery } from '@tanstack/react-query';
 
 const { Sider, Header, Content } = Layout;
 
@@ -68,24 +69,22 @@ const MainLayout = () => {
         }
     };
 
-    const [employeeName, setEmployeeName] = useState('User');
-    const [accessLevel, setAccessLevel] = useState<AccessLevel>('pic');
+    const { data } = useQuery({
+        queryKey: ['me'],
+        queryFn: authService.me,
+        retry: false,
+    });
 
-    useEffect(() => {
-        let isActive = true;
-        authService.me()
-            .then((data) => {
-                if (isActive) {
-                    setEmployeeName(data?.user?.employee_name || 'User');
-                    setAccessLevel(getAccessLevel(data?.user?.roles || []));
-                }
-            })
-            .catch(() => {});
-
-        return () => {
-            isActive = false;
-        };
-    }, []);
+    const employeeName = data?.user?.employee_name || 'User';
+    const accessLevel: AccessLevel = getAccessLevel(data?.user?.roles || []);
+    const avatarInitials = employeeName
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean)
+        .slice(0, 2)
+        .map((part, index, arr) => (index === 0 || index === arr.length - 1 ? part[0] : ''))
+        .join('')
+        .toUpperCase() || 'U';
 
     useEffect(() => {
         if (!canAccessPath(accessLevel, location.pathname)) {
@@ -191,7 +190,7 @@ const MainLayout = () => {
                             <div className="main-layout__greeting-text">Hello, {employeeName}</div>
                         </div>
                         <Dropdown menu={{ items: profileMenuItems, onClick: handleProfileMenuClick }} trigger={['click']}>
-                            <Avatar className="main-layout__avatar">JD</Avatar>
+                            <Avatar className="main-layout__avatar">{avatarInitials}</Avatar>
                         </Dropdown>
                     </div>
                 </Header>
