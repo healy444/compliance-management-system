@@ -19,6 +19,7 @@ class UploadController extends Controller
 {
     public function store(Request $request)
     {
+        $this->authorize('create', Upload::class);
         $request->validate([
             'requirement_id' => 'required|exists:requirements,id',
             'doc_file' => 'required|file|mimes:pdf|max:10240',
@@ -46,7 +47,7 @@ class UploadController extends Controller
 
         $path = $request->file('doc_file')->store('compliance_docs');
 
-        $canSetApproval = $user->hasRole('Compliance & Admin Specialist') || $user->hasRole('Admin Specialist') || $user->hasRole('Super Admin');
+        $canSetApproval = $user->hasRole('Compliance & Admin Specialist') || $user->hasRole('Super Admin');
         $approvalStatus = $canSetApproval && $request->filled('approval_status')
             ? $request->approval_status
             : 'PENDING';
@@ -100,6 +101,7 @@ class UploadController extends Controller
 
     public function index()
     {
+        $this->authorize('viewAny', Upload::class);
         return response()->json(
             Upload::with(['requirement.agency', 'uploader', 'assignment'])
                 ->orderByDesc('upload_date')
@@ -109,11 +111,11 @@ class UploadController extends Controller
 
     public function download(Request $request, Upload $upload)
     {
+        $this->authorize('view', $upload);
         $user = Auth::user();
 
         // Admin can download anything. PIC can download their own uploads or anything assigned to them.
         $canAccess = $user->hasRole('Compliance & Admin Specialist')
-            || $user->hasRole('Admin Specialist')
             || $user->hasRole('Super Admin')
             || ($upload->uploaded_by_user_id === $user->id)
             || ($upload->assignment && $upload->assignment->assigned_to_user_id === $user->id);
@@ -127,9 +129,9 @@ class UploadController extends Controller
 
     public function signedUrl(Request $request, Upload $upload)
     {
+        $this->authorize('view', $upload);
         $user = Auth::user();
         $canAccess = $user->hasRole('Compliance & Admin Specialist')
-            || $user->hasRole('Admin Specialist')
             || $user->hasRole('Super Admin')
             || ($upload->uploaded_by_user_id === $user->id)
             || ($upload->assignment && $upload->assignment->assigned_to_user_id === $user->id);
@@ -155,6 +157,7 @@ class UploadController extends Controller
 
     public function approve(Request $request, Upload $upload)
     {
+        $this->authorize('approve', $upload);
         $request->validate(['remarks' => 'nullable|string']);
 
         return DB::transaction(function () use ($request, $upload) {
@@ -179,6 +182,7 @@ class UploadController extends Controller
 
     public function reject(Request $request, Upload $upload)
     {
+        $this->authorize('reject', $upload);
         $request->validate(['remarks' => 'required|string']);
 
         return DB::transaction(function () use ($request, $upload) {

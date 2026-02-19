@@ -7,6 +7,7 @@ use App\Models\Requirement;
 use App\Models\AuditLog;
 use App\Models\Upload;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Carbon\Carbon;
 
 class DashboardController extends Controller
@@ -69,9 +70,13 @@ class DashboardController extends Controller
 
     public function complianceByAgency()
     {
+        $user = Auth::user();
+        $userId = $user?->id;
+        $isPic = $user && $this->isPicUser($user);
+
         $stats = \App\Models\Agency::with(['requirements.assignments'])
             ->get()
-            ->map(function ($agency) {
+            ->map(function ($agency) use ($isPic, $userId) {
                 $counts = [
                     'na' => 0,
                     'pending' => 0,
@@ -80,6 +85,18 @@ class DashboardController extends Controller
                 ];
 
                 foreach ($agency->requirements as $requirement) {
+                    if ($isPic && $userId) {
+                        $hasAssignment = $requirement->assignments
+                            ->where('assigned_to_user_id', $userId)
+                            ->isNotEmpty();
+                        $picList = $requirement->person_in_charge_user_ids;
+                        $inPicList = $picList
+                            ? str_contains(';' . $picList . ';', ';' . $userId . ';')
+                            : false;
+                        if (!$hasAssignment && !$inPicList) {
+                            continue;
+                        }
+                    }
                     $status = $this->summarizeRequirementStatus($requirement);
                     if (array_key_exists($status, $counts)) {
                         $counts[$status] += 1;
@@ -108,9 +125,22 @@ class DashboardController extends Controller
 
     public function calendar()
     {
-        $requirements = Requirement::with(['assignments.user', 'uploads'])
-            ->whereNotNull('deadline')
-            ->get();
+        $user = Auth::user();
+        $userId = $user?->id;
+        $isPic = $user && $this->isPicUser($user);
+
+        $requirementsQuery = Requirement::with(['assignments.user', 'uploads'])
+            ->whereNotNull('deadline');
+
+        if ($isPic && $userId) {
+            $requirementsQuery->where(function ($query) use ($userId) {
+                $query->whereHas('assignments', function ($subQuery) use ($userId) {
+                    $subQuery->where('assigned_to_user_id', $userId);
+                })->orWhereRaw("CONCAT(';', person_in_charge_user_ids, ';') LIKE ?", ['%;' . $userId . ';%']);
+            });
+        }
+
+        $requirements = $requirementsQuery->get();
 
         $byDate = [];
 
@@ -119,7 +149,9 @@ class DashboardController extends Controller
                 continue;
             }
             $dateKey = Carbon::parse($requirement->deadline)->toDateString();
-            $status = $this->summarizeCalendarStatus($requirement);
+            $status = $isPic && $userId
+                ? $this->summarizeCalendarStatusForUser($requirement, $userId)
+                : $this->summarizeCalendarStatus($requirement);
             $byDate[$dateKey][] = [
                 'id' => $requirement->id,
                 'name' => $requirement->requirement,
@@ -186,5 +218,51 @@ class DashboardController extends Controller
         }
 
         return 'pending';
+    }
+
+    private function summarizeCalendarStatusForUser($requirement, int $userId): string
+    {
+        if (!$requirement->deadline) {
+            return 'na';
+        }
+
+        $assignment = $requirement->assignments
+            ->firstWhere('assigned_to_user_id', $userId);
+
+        if (!$assignment) {
+            return 'pending';
+        }
+
+        $userUploads = $requirement->uploads
+            ->where('assignment_id', $assignment->id);
+
+        if ($userUploads->where('approval_status', 'PENDING')->count() > 0) {
+            return 'for_approval';
+        }
+
+        if ($assignment->compliance_status === 'OVERDUE') {
+            return 'overdue';
+        }
+
+        if ($assignment->compliance_status === 'APPROVED') {
+            return 'complied';
+        }
+
+        if ($assignment->compliance_status === 'SUBMITTED') {
+            return 'for_approval';
+        }
+
+        return 'pending';
+    }
+
+    private function isPicUser($user): bool
+    {
+        if (!$user) {
+            return false;
+        }
+        if ($user->hasAnyRole(['Super Admin', 'Compliance & Admin Specialist'])) {
+            return false;
+        }
+        return true;
     }
 }

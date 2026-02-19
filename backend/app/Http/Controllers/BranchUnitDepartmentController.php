@@ -10,6 +10,7 @@ class BranchUnitDepartmentController extends Controller
 {
     public function index(Request $request)
     {
+        $this->authorize('viewAny', BranchUnitDepartment::class);
         $activeOnly = filter_var($request->query('active_only', false), FILTER_VALIDATE_BOOLEAN);
         $query = BranchUnitDepartment::query();
         if ($activeOnly) {
@@ -20,6 +21,7 @@ class BranchUnitDepartmentController extends Controller
 
     public function store(Request $request)
     {
+        $this->authorize('create', BranchUnitDepartment::class);
         $validated = $request->validate([
             'name' => 'required|string|unique:branch_unit_departments,name',
         ]);
@@ -30,6 +32,7 @@ class BranchUnitDepartmentController extends Controller
 
     public function update(Request $request, BranchUnitDepartment $branchUnitDepartment)
     {
+        $this->authorize('update', $branchUnitDepartment);
         $validated = $request->validate([
             'name' => [
                 'sometimes',
@@ -46,6 +49,7 @@ class BranchUnitDepartmentController extends Controller
 
     public function destroy(BranchUnitDepartment $branchUnitDepartment)
     {
+        $this->authorize('delete', $branchUnitDepartment);
         $branchUnitDepartment->update(['is_active' => false]);
         return response()->json($branchUnitDepartment);
     }

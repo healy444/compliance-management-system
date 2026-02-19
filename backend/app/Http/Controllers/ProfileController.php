@@ -96,7 +96,7 @@ class ProfileController extends Controller
     {
         return match ($userType) {
             'Super Admin' => 'Super Admin',
-            'Admin Specialist' => 'Compliance & Admin Specialist',
+            'Compliance & Admin Specialist' => 'Compliance & Admin Specialist',
             'Person-in-Charge' => 'Person-In-Charge (PIC)',
             default => null,
         };
@@ -106,7 +106,7 @@ class ProfileController extends Controller
     {
         return match ($roleName) {
             'Super Admin' => 'Super Admin',
-            'Compliance & Admin Specialist' => 'Admin Specialist',
+            'Compliance & Admin Specialist' => 'Compliance & Admin Specialist',
             'Person-In-Charge (PIC)' => 'Person-in-Charge',
             default => null,
         };

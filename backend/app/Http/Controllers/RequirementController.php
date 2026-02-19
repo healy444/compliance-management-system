@@ -16,6 +16,7 @@ class RequirementController extends Controller
 {
     public function index(Request $request)
     {
+        $this->authorize('viewAny', Requirement::class);
         $perPage = (int) $request->query('per_page', 25);
         $perPage = $perPage > 0 ? min($perPage, 200) : 25;
 
@@ -120,6 +121,7 @@ class RequirementController extends Controller
 
     public function export(Request $request)
     {
+        $this->authorize('viewAny', Requirement::class);
         $query = Requirement::with(['agency', 'assignments.user']);
 
         if ($request->filled('agency_id')) {
@@ -192,6 +194,7 @@ class RequirementController extends Controller
 
     public function store(Request $request)
     {
+        $this->authorize('create', Requirement::class);
         $validated = $request->validate([
             'agency_id' => 'required|exists:agencies,id',
             'category' => 'required|string',
@@ -235,6 +238,7 @@ class RequirementController extends Controller
 
     public function show(Requirement $requirement)
     {
+        $this->authorize('view', $requirement);
         $requirement->load(['agency', 'assignments.user', 'assignments.uploads.uploader', 'uploads.uploader']);
         $requirement->compliance_status = $this->summarizeComplianceStatus($requirement);
 
@@ -243,6 +247,7 @@ class RequirementController extends Controller
 
     public function update(Request $request, Requirement $requirement)
     {
+        $this->authorize('update', $requirement);
         $validated = $request->validate([
             'category' => 'string',
             'requirement' => 'string',
@@ -311,6 +316,7 @@ class RequirementController extends Controller
 
     public function destroy(Requirement $requirement)
     {
+        $this->authorize('delete', $requirement);
         $requirement->delete();
         return response()->noContent();
     }

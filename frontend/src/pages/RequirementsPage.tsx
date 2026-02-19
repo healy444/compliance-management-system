@@ -391,7 +391,6 @@ const RequirementsPage = () => {
             return (
                 roleName === 'Person-In-Charge (PIC)' ||
                 roleName === 'Compliance & Admin Specialist' ||
-                roleName === 'Admin Specialist' ||
                 roleName === 'Person-in-Charge'
             );
         });

@@ -38,7 +38,7 @@ const MyRequirementsPage = () => {
     const canEditApproval = useMemo(() => {
         const roles = meData?.user?.roles || [];
         return roles.some((role: any) =>
-            role?.name === 'Compliance & Admin Specialist' || role?.name === 'Admin Specialist'
+            role?.name === 'Compliance & Admin Specialist'
         );
     }, [meData]);
 

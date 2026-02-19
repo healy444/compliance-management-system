@@ -14,6 +14,15 @@
   margin-bottom: 8px;
 }
 
+.dashboard-kpi-row--pic {
+  justify-content: space-between;
+}
+
+.dashboard-kpi-row--pic .ant-col {
+  min-width: 220px;
+  max-width: 260px;
+}
+
 .dashboard-row {
   margin-top: 24px;
 }
@@ -239,14 +248,28 @@
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
+.dashboard-kpi-card--static {
+  cursor: default;
+  transition: none;
+}
+
 .dashboard-kpi-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
 }
 
+.dashboard-kpi-card--static:hover {
+  transform: none;
+  box-shadow: none;
+}
+
 .dashboard-kpi-card:focus-visible {
   outline: 2px solid #1890ff;
   outline-offset: 2px;
+}
+
+.dashboard-kpi-card--static:focus-visible {
+  outline: none;
 }
 
 .dashboard-center {

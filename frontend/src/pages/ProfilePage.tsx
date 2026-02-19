@@ -26,7 +26,7 @@ const branchOptions = [
 
 const userTypeOptions = [
     'Super Admin',
-    'Admin Specialist',
+    'Compliance & Admin Specialist',
     'Person-in-Charge',
 ].map((userType) => ({ label: userType, value: userType }));
 
@@ -45,7 +45,7 @@ const ProfilePage = () => {
         const mappedFromRole = roleName === 'Super Admin'
             ? 'Super Admin'
             : roleName === 'Compliance & Admin Specialist'
-                ? 'Admin Specialist'
+                ? 'Compliance & Admin Specialist'
                 : roleName === 'Person-In-Charge (PIC)'
                     ? 'Person-in-Charge'
                     : '';
@@ -54,7 +54,7 @@ const ProfilePage = () => {
             return 'Person-in-Charge';
         }
         if (rawType === 'Compliance & Admin Specialist') {
-            return 'Admin Specialist';
+            return 'Compliance & Admin Specialist';
         }
 
         return rawType || mappedFromRole || '';

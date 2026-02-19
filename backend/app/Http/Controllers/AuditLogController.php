@@ -9,6 +9,7 @@ class AuditLogController extends Controller
 {
     public function index()
     {
+        $this->authorize('viewAny', AuditLog::class);
         if (!auth()->user()->hasRole('Super Admin')) {
             return response()->json(['message' => 'Forbidden'], 403);
         }

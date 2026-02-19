@@ -35,7 +35,7 @@ const Dashboard = () => {
     });
 
     const accessLevel = getAccessLevel(meData?.user?.roles || []);
-    const showKpis = accessLevel !== 'pic';
+    const isPic = accessLevel === 'pic';
 
     const { data: agencyStats, isLoading: agencyLoading } = useQuery({
         queryKey: ['agency-stats'],
@@ -60,6 +60,12 @@ const Dashboard = () => {
     const { data: certificationRequirements, isLoading: certificationLoading } = useQuery({
         queryKey: ['requirements', 'certification-dashboard'],
         queryFn: () => requirementService.getAll({ category: 'Certification', per_page: 200 }),
+    });
+
+    const { data: myRequirements, isLoading: myRequirementsLoading } = useQuery({
+        queryKey: ['requirements', 'my'],
+        queryFn: requirementService.getMine,
+        enabled: Boolean(meData) && isPic,
     });
 
     const [detailOpen, setDetailOpen] = useState(false);
@@ -90,13 +96,23 @@ const Dashboard = () => {
         { key: 'overdue', label: 'Overdue', className: 'status-overdue' },
     ];
 
-    const calendarLegend = [
-        { key: 'pending', label: 'Pending', className: 'status-pending' },
-        { key: 'complied', label: 'Complied', className: 'status-complied' },
-        { key: 'na', label: 'N/A', className: 'status-na' },
-        { key: 'overdue', label: 'Overdue', className: 'status-overdue' },
-        { key: 'for_approval', label: 'For Approval', className: 'status-approval' },
-    ];
+    const calendarLegend = useMemo(() => {
+        if (isPic) {
+            return [
+                { key: 'pending', label: 'Pending', className: 'status-pending' },
+                { key: 'for_approval', label: 'Awaiting Approval', className: 'status-approval' },
+                { key: 'complied', label: 'Complied', className: 'status-complied' },
+                { key: 'overdue', label: 'Overdue', className: 'status-overdue' },
+            ];
+        }
+        return [
+            { key: 'pending', label: 'Pending', className: 'status-pending' },
+            { key: 'complied', label: 'Complied', className: 'status-complied' },
+            { key: 'na', label: 'N/A', className: 'status-na' },
+            { key: 'overdue', label: 'Overdue', className: 'status-overdue' },
+            { key: 'for_approval', label: 'For Approval', className: 'status-approval' },
+        ];
+    }, [isPic]);
 
     const calendarMap = useMemo(() => calendarData || {}, [calendarData]);
 
@@ -161,9 +177,64 @@ const Dashboard = () => {
         { title: 'For Approval', value: stats?.for_approval || 0, icon: <FileProtectOutlined />, colorClass: 'dashboard-stat--purple', to: '/uploads' },
     ];
 
+    const picStats = useMemo(() => {
+        const list = myRequirements || [];
+        let pending = 0;
+        let awaitingApproval = 0;
+        let overdue = 0;
+        let complied = 0;
+
+        list.forEach((req) => {
+            const status = String(req.compliance_status || '').toUpperCase();
+            if (status === 'APPROVED') {
+                complied += 1;
+            } else if (status === 'OVERDUE') {
+                overdue += 1;
+            } else if (status === 'SUBMITTED') {
+                awaitingApproval += 1;
+            } else if (status === 'PENDING' || status === 'REJECTED') {
+                pending += 1;
+            }
+        });
+
+        return {
+            totalAssigned: list.length,
+            pending,
+            awaitingApproval,
+            overdue,
+            complied,
+        };
+    }, [myRequirements]);
+
+    const picKpiCards = [
+        { title: 'Total Requirements', value: picStats.totalAssigned, icon: <FileTextOutlined />, colorClass: 'dashboard-stat--blue' },
+        { title: 'Pending', value: picStats.pending, icon: <ClockCircleOutlined />, colorClass: 'dashboard-stat--gold' },
+        { title: 'Awaiting Approval', value: picStats.awaitingApproval, icon: <FileProtectOutlined />, colorClass: 'dashboard-stat--purple' },
+        { title: 'Overdue', value: picStats.overdue, icon: <WarningOutlined />, colorClass: 'dashboard-stat--red' },
+        { title: 'Complied', value: picStats.complied, icon: <CheckCircleOutlined />, colorClass: 'dashboard-stat--green' },
+    ];
+
     return (
         <div className="dashboard-page">
-            {showKpis ? (
+            {isPic ? (
+                <Row gutter={[16, 16]} className="dashboard-kpi-row dashboard-kpi-row--pic" justify="space-between">
+                    {picKpiCards.map((stat, index) => (
+                        <Col xs={24} sm={12} md={8} key={index} flex="1 1 220px">
+                            <Card
+                                className={`dashboard-stat dashboard-kpi-card dashboard-kpi-card--static ${stat.colorClass}`}
+                                loading={myRequirementsLoading}
+                                variant="outlined"
+                            >
+                                <Statistic
+                                    title={stat.title}
+                                    value={stat.value}
+                                    prefix={<span className="dashboard-stat-icon">{stat.icon}</span>}
+                                />
+                            </Card>
+                        </Col>
+                    ))}
+                </Row>
+            ) : (
                 <Row gutter={[16, 16]} className="dashboard-kpi-row">
                     {kpiCards.map((stat, index) => (
                         <Col xs={24} sm={12} md={8} lg={4} key={index}>
@@ -189,7 +260,7 @@ const Dashboard = () => {
                         </Col>
                     ))}
                 </Row>
-            ) : null}
+            )}
 
             <Row gutter={[16, 16]} className="dashboard-row">
                 <Col xs={24}>
@@ -336,51 +407,53 @@ const Dashboard = () => {
                 </Col>
             </Row>
 
-            <Row gutter={[16, 16]} className="dashboard-row">
-                <Col xs={24}>
-                    <Card
-                        title="Regulatory Requirements"
-                        loading={licenseLoading || permitLoading || certificationLoading}
-                        variant="outlined"
-                    >
-                        {combinedRequirements.length ? (
-                            <List
-                                dataSource={combinedRequirements}
-                                renderItem={(item: any) => (
-                                    <List.Item
-                                        className="dashboard-req-item"
-                                        actions={[
-                                            <Button
-                                                key="view"
-                                                type="link"
-                                                icon={<EyeOutlined />}
-                                                onClick={() => handleOpenDetail(item.id)}
-                                            >
-                                                View latest upload
-                                            </Button>,
-                                        ]}
-                                    >
-                                    <List.Item.Meta
-                                        title={item.requirement}
-                                        description={(
-                                            <Space wrap>
-                                                <Tag color="blue">{item.category}</Tag>
-                                                <Text type="secondary">{item.agency?.name || item.agency_id}</Text>
-                                                <Tag className={`dashboard-status-tag ${statusLegend.find(s => s.key === normalizeStatus(item.compliance_status))?.className || 'status-na'}`}>
-                                                    {normalizeStatus(item.compliance_status).toUpperCase()}
-                                                </Tag>
-                                            </Space>
-                                        )}
-                                    />
-                                </List.Item>
+            {!isPic ? (
+                <Row gutter={[16, 16]} className="dashboard-row">
+                    <Col xs={24}>
+                        <Card
+                            title="Regulatory Requirements"
+                            loading={licenseLoading || permitLoading || certificationLoading}
+                            variant="outlined"
+                        >
+                            {combinedRequirements.length ? (
+                                <List
+                                    dataSource={combinedRequirements}
+                                    renderItem={(item: any) => (
+                                        <List.Item
+                                            className="dashboard-req-item"
+                                            actions={[
+                                                <Button
+                                                    key="view"
+                                                    type="link"
+                                                    icon={<EyeOutlined />}
+                                                    onClick={() => handleOpenDetail(item.id)}
+                                                >
+                                                    View latest upload
+                                                </Button>,
+                                            ]}
+                                        >
+                                        <List.Item.Meta
+                                            title={item.requirement}
+                                            description={(
+                                                <Space wrap>
+                                                    <Tag color="blue">{item.category}</Tag>
+                                                    <Text type="secondary">{item.agency?.name || item.agency_id}</Text>
+                                                    <Tag className={`dashboard-status-tag ${statusLegend.find(s => s.key === normalizeStatus(item.compliance_status))?.className || 'status-na'}`}>
+                                                        {normalizeStatus(item.compliance_status).toUpperCase()}
+                                                    </Tag>
+                                                </Space>
+                                            )}
+                                        />
+                                    </List.Item>
+                                )}
+                            />
+                            ) : (
+                                <Empty description="No license/permit requirements" />
                             )}
-                        />
-                        ) : (
-                            <Empty description="No license/permit requirements" />
-                        )}
-                    </Card>
-                </Col>
-            </Row>
+                        </Card>
+                    </Col>
+                </Row>
+            ) : null}
             <Modal
                 title="Latest Upload"
                 open={detailOpen}

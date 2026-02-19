@@ -22,14 +22,14 @@ class UserSeeder extends Seeder
         ]);
         $superAdmin->assignRole('Super Admin');
 
-        // Admin Specialist
+        // Compliance & Admin Specialist
         $admin = User::updateOrCreate([
             'user_id' => 'AS001',
         ], [
-            'employee_name' => 'Admin Specialist',
+            'employee_name' => 'Compliance & Admin Specialist',
             'email' => 'specialist@cms.com',
             'branch' => 'Head Office',
-            'user_type' => 'Admin Specialist',
+            'user_type' => 'Compliance & Admin Specialist',
             'is_active' => true,
             'password' => '12345678',
         ]);

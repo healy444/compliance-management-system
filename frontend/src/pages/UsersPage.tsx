@@ -30,7 +30,7 @@ const branchOptions = [
 
 const userTypeOptions = [
     'Super Admin',
-    'Admin Specialist',
+    'Compliance & Admin Specialist',
     'Person-in-Charge',
 ].map((userType) => ({ label: userType, value: userType }));
 
@@ -43,6 +43,8 @@ type UserFormValues = {
     password?: string;
     is_active: boolean;
 };
+
+const normalizeUserTypeValue = (value?: string | null) => value || '';
 
 const UsersPage = () => {
     const [form] = Form.useForm<UserFormValues>();
@@ -80,7 +82,7 @@ const UsersPage = () => {
                 setIsSuperAdmin(roles.some((role: any) => role.name === 'Super Admin'));
                 setIsSpecialist(
                     roles.some((role: any) =>
-                        role.name === 'Compliance & Admin Specialist' || role.name === 'Admin Specialist'
+                        role.name === 'Compliance & Admin Specialist'
                     )
                 );
                 setCurrentUserId(data?.user?.id ?? null);
@@ -100,7 +102,8 @@ const UsersPage = () => {
         if (!isSpecialist) {
             return false;
         }
-        return userType === 'Admin Specialist' || userType === 'Person-in-Charge';
+        const normalized = normalizeUserTypeValue(userType);
+        return normalized === 'Compliance & Admin Specialist' || normalized === 'Person-in-Charge';
     };
     const isSuperAdminUser = (user: User) =>
         user.user_type === 'Super Admin' || user.roles?.some((role) => role.name === 'Super Admin');
@@ -132,7 +135,7 @@ const UsersPage = () => {
     const previewIdByType = useMemo<Record<string, string>>(() => {
         const prefixMap: Record<string, string> = {
             'Super Admin': 'SA',
-            'Admin Specialist': 'AS',
+            'Compliance & Admin Specialist': 'AS',
             'Person-in-Charge': 'PIC',
         };
         const result: Record<string, string> = {};
@@ -296,7 +299,7 @@ const UsersPage = () => {
             employee_name: user.employee_name,
             email: user.email,
             branch: user.branch,
-            user_type: user.user_type || '',
+            user_type: normalizeUserTypeValue(user.user_type),
             is_active: user.is_active ?? true,
         });
         setIsDrawerOpen(true);
@@ -342,7 +345,7 @@ const UsersPage = () => {
                 employee_name: user.employee_name,
                 email: user.email,
                 branch: user.branch,
-                user_type: user.user_type || 'Admin Specialist',
+                user_type: normalizeUserTypeValue(user.user_type) || 'Compliance & Admin Specialist',
                 is_active: isActive,
             },
         });
@@ -526,7 +529,7 @@ const UsersPage = () => {
                                     if (!editingUser) {
                                     form.setFieldsValue({ user_id: previewIdByType[value] || 'Auto-generated' });
                                     }
-                                    if (value === 'Super Admin' || value === 'Admin Specialist') {
+                                    if (value === 'Super Admin' || value === 'Compliance & Admin Specialist') {
                                         form.setFieldsValue({ branch: 'Head Office' });
                                     }
                                 }}

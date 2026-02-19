@@ -10,6 +10,7 @@ class PositionController extends Controller
 {
     public function index(Request $request)
     {
+        $this->authorize('viewAny', Position::class);
         $activeOnly = filter_var($request->query('active_only', false), FILTER_VALIDATE_BOOLEAN);
         $query = Position::query();
         if ($activeOnly) {
@@ -20,6 +21,7 @@ class PositionController extends Controller
 
     public function store(Request $request)
     {
+        $this->authorize('create', Position::class);
         $validated = $request->validate([
             'name' => 'required|string|unique:positions,name',
         ]);
@@ -30,6 +32,7 @@ class PositionController extends Controller
 
     public function update(Request $request, Position $position)
     {
+        $this->authorize('update', $position);
         $validated = $request->validate([
             'name' => [
                 'sometimes',
@@ -46,6 +49,7 @@ class PositionController extends Controller
 
     public function destroy(Position $position)
     {
+        $this->authorize('delete', $position);
         $position->update(['is_active' => false]);
         return response()->json($position);
     }

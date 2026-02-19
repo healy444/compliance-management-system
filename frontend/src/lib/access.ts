@@ -17,7 +17,7 @@ export const getAccessLevel = (roles: RoleLike[] | null | undefined): AccessLeve
     if (hasRole(roles, ['Super Admin'])) {
         return 'super';
     }
-    if (hasRole(roles, ['Compliance & Admin Specialist', 'Admin Specialist'])) {
+    if (hasRole(roles, ['Compliance & Admin Specialist'])) {
         return 'admin';
     }
     return 'pic';

@@ -13,6 +13,7 @@ class UserController extends Controller
 {
     public function index(Request $request)
     {
+        $this->authorize('viewAny', User::class);
         if (!$this->isSuperAdmin() && !$this->isSpecialist()) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
@@ -35,6 +36,7 @@ class UserController extends Controller
 
     public function store(Request $request)
     {
+        $this->authorize('create', User::class);
         if (!$this->isSuperAdmin() && !$this->isSpecialist()) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
@@ -75,6 +77,7 @@ class UserController extends Controller
 
     public function update(Request $request, User $user)
     {
+        $this->authorize('update', $user);
         if (!$this->isSuperAdmin() && !$this->isSpecialist()) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
@@ -115,6 +118,7 @@ class UserController extends Controller
 
     public function resetPassword(Request $request, User $user)
     {
+        $this->authorize('resetPassword', $user);
         if (!$this->isSuperAdmin() && !$this->isSpecialist()) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
@@ -148,6 +152,7 @@ class UserController extends Controller
 
     public function import(Request $request)
     {
+        $this->authorize('create', User::class);
         if (!$this->isSuperAdmin() && !$this->isSpecialist()) {
             return response()->json(['message' => 'Forbidden'], 403);
         }
@@ -262,7 +267,7 @@ class UserController extends Controller
     {
         return match ($userType) {
             'Super Admin' => 'Super Admin',
-            'Admin Specialist' => 'Compliance & Admin Specialist',
+            'Compliance & Admin Specialist' => 'Compliance & Admin Specialist',
             'Person-in-Charge' => 'Person-In-Charge (PIC)',
             default => null,
         };
@@ -272,7 +277,7 @@ class UserController extends Controller
     {
         $prefix = match ($userType) {
             'Super Admin' => 'SA',
-            'Admin Specialist' => 'AS',
+            'Compliance & Admin Specialist' => 'AS',
             'Person-in-Charge' => 'PIC',
             default => 'USR',
         };
@@ -296,7 +301,7 @@ class UserController extends Controller
 
         return match ($roleName) {
             'Super Admin' => 'Super Admin',
-            'Compliance & Admin Specialist' => 'Admin Specialist',
+            'Compliance & Admin Specialist' => 'Compliance & Admin Specialist',
             'Person-In-Charge (PIC)' => 'Person-in-Charge',
             default => null,
         };
@@ -309,7 +314,7 @@ class UserController extends Controller
 
     private function isSpecialist(): bool
     {
-        return auth()->user()?->hasRole(['Compliance & Admin Specialist', 'Admin Specialist']) ?? false;
+        return auth()->user()?->hasRole(['Compliance & Admin Specialist']) ?? false;
     }
 
     private function canManageUserType(string $userType): bool
@@ -319,7 +324,7 @@ class UserController extends Controller
         }
 
         if ($this->isSpecialist()) {
-            return in_array($userType, ['Admin Specialist', 'Person-in-Charge'], true);
+            return in_array($userType, ['Compliance & Admin Specialist', 'Person-in-Charge'], true);
         }
 
         return false;
@@ -459,7 +464,7 @@ class UserController extends Controller
 
         return match ($normalized) {
             'super admin', 'superadmin' => 'Super Admin',
-            'admin specialist', 'specialist', 'compliance & admin specialist', 'compliance and admin specialist' => 'Admin Specialist',
+            'compliance & admin specialist', 'compliance and admin specialist' => 'Compliance & Admin Specialist',
             'person in charge', 'person-in-charge', 'pic' => 'Person-in-Charge',
             default => null,
         };
