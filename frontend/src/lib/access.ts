@@ -38,7 +38,7 @@ export const canAccessPath = (accessLevel: AccessLevel, path: string) => {
         return normalized !== '/audit-trail';
     }
 
-    return normalized === '/' || normalized === '/my-requirements';
+    return normalized === '/' || normalized === '/my-requirements' || normalized === '/uploads';
 };
 
 export const isMenuKeyAllowed = (accessLevel: AccessLevel, key: string) => {
@@ -50,7 +50,7 @@ export const isMenuKeyAllowed = (accessLevel: AccessLevel, key: string) => {
         return key !== '/audit-trail';
     }
 
-    return key === '/' || key === '/my-requirements';
+    return key === '/' || key === '/my-requirements' || key === '/uploads';
 };
 
 export const getDefaultRoute = (accessLevel: AccessLevel) => {

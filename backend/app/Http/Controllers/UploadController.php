@@ -102,11 +102,15 @@ class UploadController extends Controller
     public function index()
     {
         $this->authorize('viewAny', Upload::class);
-        return response()->json(
-            Upload::with(['requirement.agency', 'uploader', 'assignment'])
-                ->orderByDesc('upload_date')
-                ->get()
-        );
+        $user = Auth::user();
+        $query = Upload::with(['requirement.agency', 'uploader', 'assignment'])
+            ->orderByDesc('upload_date');
+
+        if (!$user->hasAnyRole(['Super Admin', 'Compliance & Admin Specialist'])) {
+            $query->where('uploaded_by_user_id', $user->id);
+        }
+
+        return response()->json($query->get());
     }
 
     public function download(Request $request, Upload $upload)

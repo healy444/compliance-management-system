@@ -2,6 +2,7 @@ import { Table, Button, Space, message, Typography, Empty, Modal, Form, Input, S
 import { CheckOutlined, CloseOutlined, EyeOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { requirementService, uploadService } from '../services/apiService';
+import { authService } from '../services/authService';
 import type { ColumnsType } from 'antd/es/table';
 import { useState } from 'react';
 import './ApprovalsPage.css';
@@ -20,6 +21,10 @@ const ApprovalsPage = () => {
     const { data: uploads, isLoading } = useQuery({
         queryKey: ['uploads'],
         queryFn: uploadService.getAll,
+    });
+    const { data: meData } = useQuery({
+        queryKey: ['me'],
+        queryFn: authService.me,
     });
     const { data: requirementDetail, isLoading: detailLoading } = useQuery({
         queryKey: ['requirement-detail', detailRequirementId],
@@ -100,6 +105,11 @@ const ApprovalsPage = () => {
     };
 
     const isProcessing = approveMutation.isPending || rejectMutation.isPending;
+    const canApprove = Boolean(
+        meData?.user?.roles?.some((role: any) =>
+            role?.name === 'Super Admin' || role?.name === 'Compliance & Admin Specialist'
+        )
+    );
 
     const columns: ColumnsType<any> = [
         {
@@ -173,26 +183,30 @@ const ApprovalsPage = () => {
                             onClick={() => openDetails(record.requirement?.id)}
                         />
                     </Tooltip>
-                    <Tooltip title="Approve">
-                        <Button
-                            type="text"
-                            icon={<CheckOutlined />}
-                            className="approvals-action approvals-action--approve"
-                            onClick={() => openRemarks('approve', record.id, record.requirement?.requirement)}
-                            loading={isProcessing && activeId === record.id && actionType === 'approve'}
-                            disabled={isProcessing || record.approval_status !== 'PENDING'}
-                        />
-                    </Tooltip>
-                    <Tooltip title="Reject">
-                        <Button
-                            type="text"
-                            danger
-                            icon={<CloseOutlined />}
-                            onClick={() => openRemarks('reject', record.id, record.requirement?.requirement)}
-                            loading={isProcessing && activeId === record.id && actionType === 'reject'}
-                            disabled={isProcessing || record.approval_status !== 'PENDING'}
-                        />
-                    </Tooltip>
+                    {canApprove ? (
+                        <>
+                            <Tooltip title="Approve">
+                                <Button
+                                    type="text"
+                                    icon={<CheckOutlined />}
+                                    className="approvals-action approvals-action--approve"
+                                    onClick={() => openRemarks('approve', record.id, record.requirement?.requirement)}
+                                    loading={isProcessing && activeId === record.id && actionType === 'approve'}
+                                    disabled={isProcessing || record.approval_status !== 'PENDING'}
+                                />
+                            </Tooltip>
+                            <Tooltip title="Reject">
+                                <Button
+                                    type="text"
+                                    danger
+                                    icon={<CloseOutlined />}
+                                    onClick={() => openRemarks('reject', record.id, record.requirement?.requirement)}
+                                    loading={isProcessing && activeId === record.id && actionType === 'reject'}
+                                    disabled={isProcessing || record.approval_status !== 'PENDING'}
+                                />
+                            </Tooltip>
+                        </>
+                    ) : null}
                 </Space>
             ),
         },

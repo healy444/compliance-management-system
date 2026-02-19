@@ -9,7 +9,7 @@ class UploadPolicy
 {
     public function viewAny(User $user): bool
     {
-        return $user->hasAnyRole(['Super Admin', 'Compliance & Admin Specialist']);
+        return true;
     }
 
     public function view(User $user, Upload $upload): bool
